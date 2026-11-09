@@ -24,7 +24,10 @@ public class MealConversationController {
         if (request.message() == null || request.message().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入饮食需求");
         }
-
+        if ("换一批".equals(request.message().strip())) {
+         var saved = conversationService.changeBatch(request.sessionId());
+          return new Turn(saved.sessionId(), saved.result());
+}
         conversationService.checkSession(request.sessionId());
         var latest = preferenceExtractor.extract(request.message());
         var saved = conversationService.recommendTurn(request.sessionId(), latest);

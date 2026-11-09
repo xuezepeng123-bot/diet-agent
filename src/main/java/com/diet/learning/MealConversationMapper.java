@@ -5,7 +5,8 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface MealConversationMapper {
-    SessionRow findById(@Param("sessionId") String sessionId);
+    SessionRow findById(@Param("sessionId") String sessionId,
+                    @Param("forUpdate") boolean forUpdate);
 
     int insert(@Param("sessionId") String sessionId,
                @Param("mealTime") String mealTime,
@@ -16,5 +17,6 @@ public interface MealConversationMapper {
                          @Param("taste") String taste);
 int saveLastRecommendations(@Param("sessionId") String sessionId,
                             @Param("mealIdsJson") String mealIdsJson);
-    record SessionRow(String sessionId, String mealTime, String taste) {}
+    record SessionRow(String sessionId, String mealTime, String taste,
+                  String lastRecommendationIds) {}
 }

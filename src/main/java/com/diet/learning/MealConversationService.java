@@ -1,6 +1,10 @@
 package com.diet.learning;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -9,6 +13,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class MealConversationService {
+    private static final int BATCH_SIZE = 1;
+
     private final MealConversationMapper mapper;
     private final RecommendationService recommendationService;
     private final ObjectMapper json;
@@ -22,7 +28,7 @@ public class MealConversationService {
 
     public void checkSession(UUID sessionId) {
         if (sessionId != null) {
-            findRequired(sessionId.toString());
+            findRequired(sessionId.toString(), false);
         }
     }
 
@@ -37,19 +43,48 @@ public class MealConversationService {
             mapper.mergePreferences(key, latest.mealTime(), latest.taste());
         }
 
-        var row = findRequired(key);
+        return recommendAndSave(id, findRequired(key, false), Set.of());
+    }
+
+    @Transactional
+    public SavedTurn changeBatch(UUID sessionId) {
+        if (sessionId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "换一批需要当前会话的 sessionId");
+        }
+
+        var row = findRequired(sessionId.toString(), true);
+        if (row.lastRecommendationIds() == null) {
+            var result = new RecommendationService.Result(
+                    "ASK", "请先完成一次餐食推荐，再试试换一批。", List.of());
+            return new SavedTurn(sessionId, result);
+        }
+
+        Set<Long> excludedIds;
+        try {
+            excludedIds = json.readValue(
+                    row.lastRecommendationIds(), new TypeReference<Set<Long>>() {});
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("会话推荐历史格式无效", ex);
+        }
+        return recommendAndSave(sessionId, row, excludedIds);
+    }
+
+    private SavedTurn recommendAndSave(UUID id, MealConversationMapper.SessionRow row,
+            Set<Long> excludedIds) {
         var preferences = new MealPreferenceExtractor.Preferences(row.mealTime(), row.taste());
-        var result = recommendationService.recommendForPreferences(preferences);
+        var result = recommendationService.recommendForPreferences(
+                preferences, excludedIds, BATCH_SIZE);
 
         if (!result.meals().isEmpty()) {
             var mealIds = result.meals().stream().map(Meal::id).toList();
-            mapper.saveLastRecommendations(key, json.valueToTree(mealIds).toString());
+            mapper.saveLastRecommendations(id.toString(), json.valueToTree(mealIds).toString());
         }
         return new SavedTurn(id, result);
     }
 
-    private MealConversationMapper.SessionRow findRequired(String sessionId) {
-        var row = mapper.findById(sessionId);
+    private MealConversationMapper.SessionRow findRequired(String sessionId, boolean forUpdate) {
+        var row = mapper.findById(sessionId, forUpdate);
         if (row == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "会话不存在");
         }
