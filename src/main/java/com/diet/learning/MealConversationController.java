@@ -11,14 +11,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class MealConversationController {
     private final MealConversationService conversationService;
     private final MealPreferenceExtractor preferenceExtractor;
-    private final RecommendationService recommendationService;
-
+    
     public MealConversationController(MealConversationService conversationService,
-            MealPreferenceExtractor preferenceExtractor,
-            RecommendationService recommendationService) {
+            MealPreferenceExtractor preferenceExtractor) {
         this.conversationService = conversationService;
         this.preferenceExtractor = preferenceExtractor;
-        this.recommendationService = recommendationService;
+       
     }
 
     @PostMapping("/api/conversations/recommendations")
@@ -29,9 +27,8 @@ public class MealConversationController {
 
         conversationService.checkSession(request.sessionId());
         var latest = preferenceExtractor.extract(request.message());
-        var saved = conversationService.saveTurn(request.sessionId(), latest);
-        var result = recommendationService.recommendForPreferences(saved.preferences());
-        return new Turn(saved.sessionId(), result);
+        var saved = conversationService.recommendTurn(request.sessionId(), latest);
+return new Turn(saved.sessionId(), saved.result());
     }
 
     public record Request(UUID sessionId, String message) {}

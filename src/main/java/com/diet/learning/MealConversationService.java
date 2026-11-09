@@ -1,5 +1,6 @@
 package com.diet.learning;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -9,9 +10,14 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MealConversationService {
     private final MealConversationMapper mapper;
+    private final RecommendationService recommendationService;
+    private final ObjectMapper json;
 
-    public MealConversationService(MealConversationMapper mapper) {
+    public MealConversationService(MealConversationMapper mapper,
+            RecommendationService recommendationService, ObjectMapper json) {
         this.mapper = mapper;
+        this.recommendationService = recommendationService;
+        this.json = json;
     }
 
     public void checkSession(UUID sessionId) {
@@ -21,19 +27,25 @@ public class MealConversationService {
     }
 
     @Transactional
-    public SavedTurn saveTurn(UUID sessionId, MealPreferenceExtractor.Preferences latest) {
+    public SavedTurn recommendTurn(UUID sessionId, MealPreferenceExtractor.Preferences latest) {
+        UUID id = sessionId == null ? UUID.randomUUID() : sessionId;
+        String key = id.toString();
+
         if (sessionId == null) {
-            UUID newId = UUID.randomUUID();
-            mapper.insert(newId.toString(), latest.mealTime(), latest.taste());
-            return new SavedTurn(newId, latest);
+            mapper.insert(key, latest.mealTime(), latest.taste());
+        } else {
+            mapper.mergePreferences(key, latest.mealTime(), latest.taste());
         }
 
-        String id = sessionId.toString();
-        mapper.mergePreferences(id, latest.mealTime(), latest.taste());
+        var row = findRequired(key);
+        var preferences = new MealPreferenceExtractor.Preferences(row.mealTime(), row.taste());
+        var result = recommendationService.recommendForPreferences(preferences);
 
-        var row = findRequired(id);
-        var merged = new MealPreferenceExtractor.Preferences(row.mealTime(), row.taste());
-        return new SavedTurn(sessionId, merged);
+        if (!result.meals().isEmpty()) {
+            var mealIds = result.meals().stream().map(Meal::id).toList();
+            mapper.saveLastRecommendations(key, json.valueToTree(mealIds).toString());
+        }
+        return new SavedTurn(id, result);
     }
 
     private MealConversationMapper.SessionRow findRequired(String sessionId) {
@@ -44,5 +56,5 @@ public class MealConversationService {
         return row;
     }
 
-    public record SavedTurn(UUID sessionId, MealPreferenceExtractor.Preferences preferences) {}
+    public record SavedTurn(UUID sessionId, RecommendationService.Result result) {}
 }

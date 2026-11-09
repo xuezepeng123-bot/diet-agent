@@ -30,4 +30,9 @@
         WHERE session_id = #{sessionId}
     </update>
 
+<update id="saveLastRecommendations">
+    UPDATE meal_conversation
+    SET last_recommendation_ids = #{mealIdsJson}
+    WHERE session_id = #{sessionId}
+</update>
 </mapper>
