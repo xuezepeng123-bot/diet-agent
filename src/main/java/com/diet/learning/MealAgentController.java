@@ -40,12 +40,12 @@ public class MealAgentController {
         }
 
         Toolkit toolkit = new Toolkit();
-        toolkit.registerTool(mealSearchTool);
+        toolkit.registerTool(mealSearchTool);//注册查菜工具
 
         ReActAgent agent = ReActAgent.builder()
                 .name("meal_agent")
                 .model(model)
-                .toolkit(toolkit)
+                .toolkit(toolkit)//把工具交给agent
                 .sysPrompt("""
                         你是饮食推荐助手。餐次只能是早餐、午餐、晚餐，口味只能是清淡、微辣。
                         缺少餐次或口味时追问。晚上对应晚餐，不辣对应清淡。

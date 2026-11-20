@@ -1,5 +1,5 @@
 package com.diet.learning;
-
+import java.util.LinkedHashSet;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,7 +32,7 @@ public class MealConversationService {
         }
     }
 
-    @Transactional
+    @Transactional//声明式事务
     public SavedTurn recommendTurn(UUID sessionId, MealPreferenceExtractor.Preferences latest) {
         UUID id = sessionId == null ? UUID.randomUUID() : sessionId;
         String key = id.toString();
@@ -60,14 +60,18 @@ public class MealConversationService {
             return new SavedTurn(sessionId, result);
         }
 
-        Set<Long> excludedIds;
+        Set<Long> excludedIds = readRecommendationIds(row.lastRecommendationIds());
+        return recommendAndSave(sessionId, row, excludedIds);
+    }
+    private Set<Long> readRecommendationIds(String mealIdsJson) {
+        if (mealIdsJson == null) {
+            return Set.of();
+        }
         try {
-            excludedIds = json.readValue(
-                    row.lastRecommendationIds(), new TypeReference<Set<Long>>() {});
+            return json.readValue(mealIdsJson, new TypeReference<LinkedHashSet<Long>>() {});
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("会话推荐历史格式无效", ex);
         }
-        return recommendAndSave(sessionId, row, excludedIds);
     }
 
     private SavedTurn recommendAndSave(UUID id, MealConversationMapper.SessionRow row,
@@ -76,10 +80,13 @@ public class MealConversationService {
         var result = recommendationService.recommendForPreferences(
                 preferences, excludedIds, BATCH_SIZE);
 
-        if (!result.meals().isEmpty()) {
-            var mealIds = result.meals().stream().map(Meal::id).toList();
-            mapper.saveLastRecommendations(id.toString(), json.valueToTree(mealIds).toString());
-        }
+                if (!result.meals().isEmpty()) {
+                    Set<Long> history = new LinkedHashSet<>(readRecommendationIds(row.lastRecommendationIds()));
+                    for (Meal meal : result.meals()) {
+                        history.add(meal.id());
+                    }
+                    mapper.saveLastRecommendations(id.toString(), json.valueToTree(history).toString());
+                }
         return new SavedTurn(id, result);
     }
 
