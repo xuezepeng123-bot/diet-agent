@@ -1,9 +1,3 @@
-# Diet Agent Learning
-我的饮食推荐 Agent学习项目
+# Diet Agent · 文档修订
 
-## 学习目标
-
-- 逐步实现饮食推荐 Agent
-- 学习 java和springboot
-- 学习 git github 和maven
-- 练习操作命令
+本分支保留项目早期的 README 修订及合并记录。最新的功能介绍和代码入口见 [项目首页](https://github.com/xuezepeng123-bot/diet-agent)，启动与接口演示见 [开发分支](https://github.com/xuezepeng123-bot/diet-agent/tree/develop#本地运行)。
