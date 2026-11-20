@@ -1,19 +1,71 @@
-# Diet Agent Learning
-我的饮食推荐 Agent学习项目
+# Diet Agent · 饮食推荐 Agent
 
-## 学习目标
+个人项目。用户用自然语言描述想吃什么，服务识别餐次和口味，在信息不足时追问，条件齐全后从 MySQL 菜单中推荐餐食。同一会话可以继续补充偏好或要求「换一批」。
 
-- 逐步实现饮食推荐 Agent
-- 学习 java和springboot
-- 学习 git github 和maven
-- 练习操作命令
+**技术栈** Java 21 · Spring Boot · MyBatis · MySQL · AgentScope · 通义千问 · Maven
 
-## 项目入口
+## 已实现功能
 
-- 学习版位于仓库根目录，用根目录的 `pom.xml` 构建。
-- 原版后端位于 [original-backend](original-backend/README.md)，有独立的 `pom.xml` 和启动配置。运行原版前，请按目录内的说明创建独立数据库。
+- **多轮澄清与会话持久化**。通过 `sessionId` 恢复会话，合并新一轮提取的偏好，再决定追问还是查菜。 [会话服务](src/main/java/com/diet/learning/MealConversationService.java)
+- **结构化偏好与规则兜底**。校验千问返回的 JSON 及字段可选值，模型未配置、超时或输出校验失败时回退到关键词匹配。 [偏好提取](src/main/java/com/diet/learning/MealPreferenceExtractor.java)
+- **餐食查询与换一批**。MyBatis 按餐次和口味查询，在「换一批」时排除同一会话已推荐的菜品。 [餐食查询](src/main/resources/mapper/MealMapper.xml)
+- **Agent 工具调用**。独立的 ReAct 接口注册 `search_meals`，由模型选择调用，Agent 根据工具结果回复。 [Agent 接口](src/main/java/com/diet/learning/MealAgentController.java)
+- **对话 Trace**。会话接口返回 `X-Trace-Id`，记录请求入口、换批分支、结束状态或异常和耗时，支持按 ID 查询。 [Trace 服务](src/main/java/com/diet/learning/AgentTraceService.java)
 
-## 扩展方向
+## 一轮请求怎么走
 
-- [ ] **餐食查询 RPC（gRPC）**。推荐主流程跑通后，将候选餐食查询拆成独立服务。推荐服务通过 `SearchMeals`（按餐次和口味查菜）获取候选，再根据会话历史排除已推荐的菜。已有的 `search_meals` 工具也可以复用同一个 RPC 客户端。
-  - 验收时先启动两个服务，跑通「推荐 → 换一批」。再停掉餐食服务，确认推荐接口能提示「餐食查询暂时不可用」，并区分查询失败与没有匹配菜品。
+1. `MealConversationController` 接收消息，校验参数并生成本轮 Trace ID。
+2. `MealPreferenceExtractor` 提取本轮餐次和口味。遇到「换一批」时直接进入换批分支。
+3. `MealConversationService` 更新会话，调用 `RecommendationService` 追问缺失字段或查询餐食，并保存推荐历史。
+4. `AgentTraceService` 保存本轮事件，调用方通过响应头中的 Trace ID 查看处理结果。
+
+| 接口 | 功能 |
+| --- | --- |
+| `POST /api/conversations/recommendations` | 多轮澄清、推荐与换批 |
+| `POST /api/agent/recommendations` | 千问 ReAct 工具调用 |
+| `GET /api/meals` | 按餐次和口味查询菜单 |
+| `GET /api/traces/{traceId}` | 查询单轮会话 Trace |
+| `GET /api/health` | 检查 HTTP 服务是否启动 |
+
+## 本地运行
+
+需要 Java 21、Maven 和 MySQL。默认连接 `127.0.0.1:3306/diet_agent_learning`，使用 `diet_app` 账号。可以通过 `SPRING_DATASOURCE_URL` 和 `SPRING_DATASOURCE_USERNAME` 覆盖连接地址和账号。
+
+在空数据库中建立 `meal_item` 并录入演示数据。
+
+```sql
+CREATE TABLE meal_item (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    meal_time VARCHAR(20) NOT NULL,
+    taste VARCHAR(20) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO meal_item (name, meal_time, taste) VALUES
+    ('清蒸鲈鱼', '晚餐', '清淡'),
+    ('冬瓜虾仁', '晚餐', '清淡');
+```
+
+在同一个数据库中依次执行 [会话表](sql/meal_conversation.sql)、[推荐历史字段](sql/add_last_recommendation_ids.sql)和 [Trace 表](sql/meal_agent_trace.sql)脚本。应用账号应能读取 `meal_item`、读写 `meal_conversation`，并查询和插入 `meal_agent_trace`。已执行过的 `ALTER TABLE` 脚本可跳过。
+
+在运行 Maven 的终端设置 `DIET_DB_PASSWORD` 环境变量。如果要体验千问偏好提取或调用 ReAct 接口，再设置 `DASHSCOPE_API_KEY`。
+
+```sh
+mvn spring-boot:run
+```
+
+## 接口演示
+
+第一轮只提供餐次，预期返回 `ASK`（等待补充口味）及 `sessionId`。
+
+```sh
+curl -i http://127.0.0.1:8080/api/conversations/recommendations \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"我想吃晚餐"}'
+```
+
+沿用返回的 `sessionId`，依次发送「清淡」和「换一批」。使用上面的演示数据，第二轮返回清蒸鲈鱼，换批返回冬瓜虾仁。用任一轮响应头的 `X-Trace-Id` 查询 `GET /api/traces/{traceId}`。
+
+## 计划扩展
+
+- **餐食查询 RPC（gRPC）**。将 `SearchMeals` 查询拆为独立服务，推荐流程和 `search_meals` 共用同一个 RPC 客户端。验收覆盖推荐、换批、空结果和远程服务不可用四种情况。
