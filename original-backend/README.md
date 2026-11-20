@@ -1,16 +1,6 @@
-# Diet Agent Learning
-我的饮食推荐 Agent学习项目
+# Diet Agent · 独立后端
 
-## 学习目标
-
-- 逐步实现饮食推荐 Agent
-- 学习 java和springboot
-- 学习 git github 和maven
-- 练习操作命令
-
-## 原版后端
-
-此分支从提供的 Diet-Agent 下载包导入 Java 源码、提示词、Mapper 和数据库脚本。建议先读 `DietChatController.dietChat()`，再顺着请求进入 `DietOrchestratorService.handleTurn()`。
+此目录收录从 Diet-Agent 项目资料导入的 Java 源码、提示词、Mapper 和数据库脚本，可以单独构建和启动。建议先读 `DietChatController.dietChat()`，再顺着请求进入 `DietOrchestratorService.handleTurn()`。
 
 用 Java 21 和 Maven 运行。先创建一个独立的空 MySQL 数据库，再导入 `src/main/resources/db/diet_db.sql`。原版 SQL 包含重建表的语句，导入前请确认选中的是新库。
 

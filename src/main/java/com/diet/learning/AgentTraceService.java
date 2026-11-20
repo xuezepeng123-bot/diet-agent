@@ -33,6 +33,7 @@ public class AgentTraceService {
                     """, trace.id().toString(), sessionId == null ? null : sessionId.toString(),
                     durationMs, json.writeValueAsString(trace.events()));
         } catch (DataAccessException | JsonProcessingException error) {
+            // Trace 写入失败时保留推荐请求原有的返回结果或异常。
             log.warn("Could not save agent trace {}", trace.id(), error);
         }
     }
