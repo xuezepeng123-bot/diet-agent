@@ -7,16 +7,13 @@ import io.agentscope.core.ReActAgent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.model.DashScopeChatModel;
-import io.agentscope.core.model.EndpointType;
 import io.agentscope.core.model.ExecutionConfig;
-import io.agentscope.core.model.GenerateOptions;
 import java.time.Duration;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-//调用模型 校验返回的json，以及在模型不可用时回退到原来的关键词匹配
+
 @Component
 public class MealPreferenceExtractor {
     private static final Logger log = LoggerFactory.getLogger(MealPreferenceExtractor.class);
@@ -33,24 +30,37 @@ public class MealPreferenceExtractor {
     private final ObjectMapper json;
     private final DashScopeChatModel model;
 
-   public MealPreferenceExtractor(ObjectMapper json, DietChatModel chatModel) {
-    this.json = json;
-    this.model = chatModel.getModel();
-}
+    public MealPreferenceExtractor(ObjectMapper json, DietChatModel chatModel) {
+        this.json = json;
+        this.model = chatModel.getModel();
+    }
 
     public Preferences extract(String message) {
+        return extractWithDetails(message).preferences();
+    }
+
+    Extraction extractWithDetails(String message) {
         String text = message == null ? "" : message;
-        if (model != null && !text.isBlank()) {
-            try {
-                Preferences preferences = extractWithModel(text);
-                log.info("Meal preferences extracted by DashScope");
-                return preferences;
-            } catch (JsonProcessingException | RuntimeException ex) {
-                log.warn("DashScope extraction failed, using keywords ({})",
-                        ex.getClass().getSimpleName());
-            }
+        if (text.isBlank()) {
+            return extractByKeywords(text, FallbackReason.EMPTY_INPUT);
         }
-        return new Preferences(firstMatch(text, MEAL_TIMES), firstMatch(text, TASTES));
+        if (model == null) {
+            return extractByKeywords(text, FallbackReason.MODEL_NOT_CONFIGURED);
+        }
+
+        try {
+            Preferences preferences = extractWithModel(text);
+            log.info("Meal preferences extracted by DashScope");
+            return new Extraction(preferences, Source.MODEL, null);
+        } catch (JsonProcessingException | RuntimeException ex) {
+            log.warn("DashScope extraction failed, using keywords ({})", ex.getClass().getSimpleName());
+            return extractByKeywords(text, FallbackReason.MODEL_FAILURE);
+        }
+    }
+
+    private Extraction extractByKeywords(String text, FallbackReason reason) {
+        var preferences = new Preferences(firstMatch(text, MEAL_TIMES), firstMatch(text, TASTES));
+        return new Extraction(preferences, Source.KEYWORDS, reason);
     }
 
     private Preferences extractWithModel(String text) throws JsonProcessingException {
@@ -84,4 +94,10 @@ public class MealPreferenceExtractor {
     }
 
     public record Preferences(String mealTime, String taste) {}
+
+    record Extraction(Preferences preferences, Source source, FallbackReason fallbackReason) {}
+
+    enum Source { MODEL, KEYWORDS }
+
+    enum FallbackReason { EMPTY_INPUT, MODEL_NOT_CONFIGURED, MODEL_FAILURE }
 }

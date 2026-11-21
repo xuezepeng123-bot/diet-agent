@@ -10,7 +10,7 @@
 - **结构化偏好与规则兜底**。校验千问返回的 JSON 及字段可选值，模型未配置、超时或输出校验失败时回退到关键词匹配。 [偏好提取](src/main/java/com/diet/learning/MealPreferenceExtractor.java)
 - **餐食查询与换一批**。MyBatis 按餐次和口味查询，在「换一批」时排除同一会话已推荐的菜品。 [餐食查询](src/main/resources/mapper/MealMapper.xml)
 - **Agent 工具调用**。独立的 ReAct 接口注册 `search_meals`，由模型选择调用，Agent 根据工具结果回复。 [Agent 接口](src/main/java/com/diet/learning/MealAgentController.java)
-- **对话 Trace**。会话接口返回 `X-Trace-Id`，记录请求入口、换批分支、结束状态或异常和耗时，支持按 ID 查询。 [Trace 服务](src/main/java/com/diet/learning/AgentTraceService.java)
+- **对话 Trace**。会话接口返回 `X-Trace-Id`，记录路由、偏好提取方式、兜底原因、提取耗时和推荐结果，支持按 ID 查询。 [Trace 服务](src/main/java/com/diet/learning/AgentTraceService.java)
 
 ## 一轮请求怎么走
 
@@ -48,7 +48,7 @@ INSERT INTO meal_item (name, meal_time, taste) VALUES
 
 在同一个数据库中依次执行 [会话表](sql/meal_conversation.sql)、[推荐历史字段](sql/add_last_recommendation_ids.sql)和 [Trace 表](sql/meal_agent_trace.sql)脚本。应用账号应能读取 `meal_item`、读写 `meal_conversation`，并查询和插入 `meal_agent_trace`。已执行过的 `ALTER TABLE` 脚本可跳过。
 
-在运行 Maven 的终端设置 `DIET_DB_PASSWORD` 环境变量。如果要体验千问偏好提取或调用 ReAct 接口，再设置 `DASHSCOPE_API_KEY`。
+在运行 Maven 的终端设置 `DIET_DB_PASSWORD` 环境变量。如果要体验千问偏好提取或调用 ReAct 接口，再设置 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_BASE_URL`。
 
 ```sh
 mvn spring-boot:run
@@ -65,6 +65,8 @@ curl -i http://127.0.0.1:8080/api/conversations/recommendations \
 ```
 
 沿用返回的 `sessionId`，依次发送「清淡」和「换一批」。使用上面的演示数据，第二轮返回清蒸鲈鱼，换批返回冬瓜虾仁。用任一轮响应头的 `X-Trace-Id` 查询 `GET /api/traces/{traceId}`。
+
+普通对话的 Trace 包含 `PREFERENCES_EXTRACTED`。查看 `details.extraction.source` 可以区分千问提取（`MODEL`）和关键词匹配（`KEYWORDS`）。关键词兜底会记录 `fallbackReason`，例如 `MODEL_NOT_CONFIGURED` 或 `MODEL_FAILURE`。`preferences` 中只记录本轮抽到的餐次和口味。换批直接沿用会话中的偏好，Trace 记录 `CHANGE_BATCH` 路由。`REQUEST_FINISHED` 的 `mealCount` 是本轮返回的餐食数量。
 
 ## 计划扩展
 

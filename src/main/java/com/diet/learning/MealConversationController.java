@@ -39,13 +39,19 @@ public class MealConversationController {
                 trace.record("ROUTE_SELECTED", Map.of("route", "CHANGE_BATCH"));
                 saved = conversationService.changeBatch(sessionId);
             } else {
+                trace.record("ROUTE_SELECTED", Map.of("route", "RECOMMENDATION"));
                 conversationService.checkSession(sessionId);
-                var latest = preferenceExtractor.extract(request.message());
-                saved = conversationService.recommendTurn(sessionId, latest);
+                long extractionStartedAt = trace.elapsedMs();
+                var extraction = preferenceExtractor.extractWithDetails(request.message());
+                trace.record("PREFERENCES_EXTRACTED", Map.of(
+                        "durationMs", trace.elapsedMs() - extractionStartedAt,
+                        "extraction", extraction));
+                saved = conversationService.recommendTurn(sessionId, extraction.preferences());
             }
 
             sessionId = saved.sessionId();
-            trace.record("REQUEST_FINISHED", Map.of("resultStatus", saved.result().status()));
+            trace.record("REQUEST_FINISHED", Map.of(
+                    "resultStatus", saved.result().status(), "mealCount", saved.result().meals().size()));
             return new Turn(sessionId, saved.result());
         } catch (RuntimeException error) {
             int httpStatus = error instanceof ResponseStatusException rejection
