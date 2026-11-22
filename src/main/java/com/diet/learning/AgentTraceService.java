@@ -51,6 +51,28 @@ public class AgentTraceService {
         }, traceId.toString()).stream().findFirst();
     }
 
+    public boolean saveLabel(UUID traceId, String expectedStatus, String note) {
+        int changed = jdbc.update("""
+                INSERT INTO meal_agent_trace_label (trace_id, expected_status, note)
+                SELECT trace_id, ?, ?
+                FROM meal_agent_trace
+                WHERE trace_id = ?
+                ON DUPLICATE KEY UPDATE expected_status = ?, note = ?
+                """, expectedStatus, note, traceId.toString(), expectedStatus, note);
+        // 相同请求重试时，MySQL 可能返回 0 条变更，标注仍然存在。
+        return changed > 0 || findLabel(traceId).isPresent();
+    }
+
+    public Optional<Label> findLabel(UUID traceId) {
+        return jdbc.query("""
+                SELECT expected_status, note, updated_at
+                FROM meal_agent_trace_label
+                WHERE trace_id = ?
+                """, (row, rowNumber) -> new Label(traceId, row.getString("expected_status"),
+                row.getString("note"), row.getTimestamp("updated_at").toInstant()),
+                traceId.toString()).stream().findFirst();
+    }
+
     private JsonNode parseEvents(String eventsJson) {
         try {
             return json.readTree(eventsJson);
@@ -60,4 +82,6 @@ public class AgentTraceService {
     }
 
     public record Detail(UUID traceId, UUID sessionId, long durationMs, JsonNode events, Instant createdAt) {}
+
+    public record Label(UUID traceId, String expectedStatus, String note, Instant updatedAt) {}
 }
