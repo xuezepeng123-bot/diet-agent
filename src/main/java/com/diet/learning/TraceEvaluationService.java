@@ -21,10 +21,17 @@ public class TraceEvaluationService {
         int mismatched = 0;
         int failed = 0;
         int unscorable = 0;
+        int helpful = 0;
+        int notHelpful = 0;
         double totalDurationMs = 0;
 
         for (var sample : samples) {
             totalDurationMs += sample.durationMs();
+            if (Boolean.TRUE.equals(sample.helpful())) {
+                helpful++;
+            } else if (Boolean.FALSE.equals(sample.helpful())) {
+                notHelpful++;
+            }
             Issue issue = inspect(sample);
             if (issue == null) {
                 matched++;
@@ -41,8 +48,11 @@ public class TraceEvaluationService {
         int scored = matched + mismatched + failed;
         Double accuracy = scored == 0 ? null : roundToTwoDecimals(100.0 * matched / scored);
         Double averageDuration = samples.isEmpty() ? null : roundToTwoDecimals(totalDurationMs / samples.size());
+        int rated = helpful + notHelpful;
+        Double helpfulPercent = rated == 0 ? null : roundToTwoDecimals(100.0 * helpful / rated);
+        var feedback = new FeedbackSummary(helpful, notHelpful, samples.size() - rated, helpfulPercent);
         return new Report(samples.size(), scored, matched, mismatched, failed, unscorable, accuracy,
-                averageDuration, List.copyOf(issues));
+                averageDuration, List.copyOf(issues), feedback);
     }
 
     private Issue inspect(AgentTraceService.LabeledSample sample) {
@@ -73,7 +83,9 @@ public class TraceEvaluationService {
 
     public record Report(int sampleCount, int scoredCount, int matchedCount, int mismatchCount,
             int failedCount, int unscorableCount, Double accuracyPercent, Double averageDurationMs,
-            List<Issue> issues) {}
+            List<Issue> issues, FeedbackSummary feedback) {}
+
+    public record FeedbackSummary(int helpfulCount, int notHelpfulCount, int unratedCount, Double helpfulPercent) {}
 
     public record Issue(UUID traceId, String expectedStatus, String actualStatus, Reason reason) {}
 

@@ -74,18 +74,40 @@ public class AgentTraceService {
                 traceId.toString()).stream().findFirst();
     }
 
+    public boolean saveFeedback(UUID traceId, boolean helpful) {
+        int changed = jdbc.update("""
+                INSERT INTO meal_agent_trace_feedback (trace_id, helpful)
+                SELECT trace_id, ?
+                FROM meal_agent_trace
+                WHERE trace_id = ?
+                ON DUPLICATE KEY UPDATE helpful = ?
+                """, helpful, traceId.toString(), helpful);
+        return changed > 0 || findFeedback(traceId).isPresent();
+    }
+
+    public Optional<Feedback> findFeedback(UUID traceId) {
+        return jdbc.query("""
+                SELECT helpful, updated_at
+                FROM meal_agent_trace_feedback
+                WHERE trace_id = ?
+                """, (row, rowNumber) -> new Feedback(traceId, row.getBoolean("helpful"),
+                row.getTimestamp("updated_at").toInstant()), traceId.toString()).stream().findFirst();
+    }
+
     List<LabeledSample> findLabeledSamples(UUID sessionId, int limit) {
         String session = sessionId == null ? null : sessionId.toString();
         return jdbc.query("""
-                SELECT t.trace_id, t.duration_ms, t.events_json, l.expected_status
+                SELECT t.trace_id, t.duration_ms, t.events_json, l.expected_status, f.helpful
                 FROM meal_agent_trace_label l
                 JOIN meal_agent_trace t ON t.trace_id = l.trace_id
+                LEFT JOIN meal_agent_trace_feedback f ON f.trace_id = l.trace_id
                 WHERE (? IS NULL OR t.session_id = ?)
                 ORDER BY t.created_at DESC, t.trace_id DESC
                 LIMIT ?
                 """, (row, rowNumber) -> new LabeledSample(UUID.fromString(row.getString("trace_id")),
                 row.getString("expected_status"), row.getLong("duration_ms"),
-                parseEvents(row.getString("events_json"))), session, session, limit);
+                parseEvents(row.getString("events_json")), row.getObject("helpful", Boolean.class)),
+                session, session, limit);
     }
 
     private JsonNode parseEvents(String eventsJson) {
@@ -100,5 +122,7 @@ public class AgentTraceService {
 
     public record Label(UUID traceId, String expectedStatus, String note, Instant updatedAt) {}
 
-    record LabeledSample(UUID traceId, String expectedStatus, long durationMs, JsonNode events) {}
+    public record Feedback(UUID traceId, boolean helpful, Instant updatedAt) {}
+
+    record LabeledSample(UUID traceId, String expectedStatus, long durationMs, JsonNode events, Boolean helpful) {}
 }

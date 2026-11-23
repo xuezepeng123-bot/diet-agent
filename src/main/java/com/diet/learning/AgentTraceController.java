@@ -1,5 +1,6 @@
 package com.diet.learning;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,5 +50,25 @@ public class AgentTraceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "找不到该 Trace 的标注"));
     }
 
+    @PutMapping("/api/traces/{traceId}/feedback")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void saveFeedback(@PathVariable UUID traceId, @RequestBody FeedbackRequest request) {
+        JsonNode helpful = request.helpful();
+        if (helpful == null || !helpful.isBoolean()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "helpful 必须为 true 或 false");
+        }
+        if (!traceService.saveFeedback(traceId, helpful.booleanValue())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trace 不存在");
+        }
+    }
+
+    @GetMapping("/api/traces/{traceId}/feedback")
+    public AgentTraceService.Feedback findFeedback(@PathVariable UUID traceId) {
+        return traceService.findFeedback(traceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "找不到该 Trace 的反馈"));
+    }
+
     public record LabelRequest(String expectedStatus, String note) {}
+
+    public record FeedbackRequest(JsonNode helpful) {}
 }

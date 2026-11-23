@@ -31,7 +31,7 @@ class TraceEvaluationTest {
     @Test
     void evaluatesLabeledTracesInTheRequestedSession() throws Exception {
         UUID session = UUID.randomUUID();
-        insertSample(session, "ASK", finished("ASK"), 10, 1);
+        UUID matched = insertSample(session, "ASK", finished("ASK"), 10, 1);
         UUID mismatch = insertSample(session, "RECOMMEND", finished("NO_MATCH"), 20, 2);
         UUID failed = insertSample(session, "RECOMMEND", """
                 [{"name":"REQUEST_FAILED","details":{"httpStatus":500}}]
@@ -39,8 +39,12 @@ class TraceEvaluationTest {
         UUID missing = insertSample(session, "ASK", """
                 [{"name":"REQUEST_RECEIVED","details":{}}]
                 """, 40, 4);
-        insertSample(session, null, finished("ASK"), 200, 0);
+        UUID unlabeled = insertSample(session, null, finished("ASK"), 200, 0);
         insertSample(UUID.randomUUID(), "ASK", finished("ASK"), 200, 0);
+        String insertFeedback = "INSERT INTO meal_agent_trace_feedback (trace_id, helpful) VALUES (?, ?)";
+        jdbc.update(insertFeedback, matched.toString(), true);
+        jdbc.update(insertFeedback, mismatch.toString(), false);
+        jdbc.update(insertFeedback, unlabeled.toString(), false);
 
         mvc.perform(get(EVALUATION_PATH).param("sessionId", session.toString()))
                 .andExpect(status().isOk())
@@ -52,6 +56,10 @@ class TraceEvaluationTest {
                 .andExpect(jsonPath("$.unscorableCount").value(1))
                 .andExpect(jsonPath("$.accuracyPercent").value(33.33))
                 .andExpect(jsonPath("$.averageDurationMs").value(25.0))
+                .andExpect(jsonPath("$.feedback.helpfulCount").value(1))
+                .andExpect(jsonPath("$.feedback.notHelpfulCount").value(1))
+                .andExpect(jsonPath("$.feedback.unratedCount").value(2))
+                .andExpect(jsonPath("$.feedback.helpfulPercent").value(50.0))
                 .andExpect(jsonPath("$.issues.length()").value(3))
                 .andExpect(jsonPath("$.issues[0].traceId").value(mismatch.toString()))
                 .andExpect(jsonPath("$.issues[0].expectedStatus").value("RECOMMEND"))
@@ -78,6 +86,7 @@ class TraceEvaluationTest {
                 .andExpect(jsonPath("$.sampleCount").value(0))
                 .andExpect(jsonPath("$.accuracyPercent").value(nullValue()))
                 .andExpect(jsonPath("$.averageDurationMs").value(nullValue()))
+                .andExpect(jsonPath("$.feedback.helpfulPercent").value(nullValue()))
                 .andExpect(jsonPath("$.issues").isEmpty());
         mvc.perform(get(EVALUATION_PATH).param("limit", "0"))
                 .andExpect(status().isBadRequest());
