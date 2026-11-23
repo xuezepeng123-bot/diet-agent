@@ -1,6 +1,5 @@
 package com.diet.learning;
 
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,7 +12,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class AgentTraceController {
-    private static final Set<String> EXPECTED_STATUSES = Set.of("ASK", "RECOMMEND", "NO_MATCH");
     private static final int MAX_NOTE_LENGTH = 500;
 
     private final AgentTraceService traceService;
@@ -32,7 +30,7 @@ public class AgentTraceController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void saveLabel(@PathVariable UUID traceId, @RequestBody LabelRequest request) {
         String expectedStatus = request.expectedStatus();
-        if (expectedStatus == null || !EXPECTED_STATUSES.contains(expectedStatus)) {
+        if (expectedStatus == null || !RecommendationService.RESULT_STATUSES.contains(expectedStatus)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "期望结果必须为 ASK、RECOMMEND 或 NO_MATCH");
         }

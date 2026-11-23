@@ -12,6 +12,7 @@
 - **Agent 工具调用**。独立的 ReAct 接口注册 `search_meals`，由模型选择调用，Agent 根据工具结果回复。 [Agent 接口](src/main/java/com/diet/learning/MealAgentController.java)
 - **对话 Trace**。会话接口返回 `X-Trace-Id`，记录路由、偏好提取方式、兜底原因、提取耗时和推荐结果，支持按 ID 查询。 [Trace 服务](src/main/java/com/diet/learning/AgentTraceService.java)
 - **Trace 人工标注**。按 `traceId` 保存期望结果和备注，供后续离线评估与实际结果对比。
+- **离线规则评估**。批量对比已标注 Trace 的实际结果和人工预期，返回准确率、平均耗时和待复查样本。
 
 ## 一轮请求怎么走
 
@@ -28,6 +29,7 @@
 | `GET /api/traces/{traceId}` | 查询单轮会话 Trace |
 | `PUT /api/traces/{traceId}/label` | 新增或覆盖人工标注 |
 | `GET /api/traces/{traceId}/label` | 查询该轮的人工标注 |
+| `GET /api/evaluations/traces` | 批量评估有人工标注的 Trace |
 | `GET /api/health` | 检查 HTTP 服务是否启动 |
 
 ## 本地运行
@@ -84,6 +86,17 @@ curl -sS "http://127.0.0.1:8080/api/traces/$TRACE_ID/label"
 ```
 
 保存成功返回 `204`。用 Trace 的 `REQUEST_FINISHED.details.resultStatus` 对比标注中的 `expectedStatus`，即可判断这一轮的结果是否符合预期。
+
+### 批量评估标注样本
+
+```sh
+curl -sS 'http://127.0.0.1:8080/api/evaluations/traces?limit=20'
+```
+
+默认按创建时间从新到旧取最近 100 条已标注 Trace，可用 `limit` 指定 1 到 500 条，也可用 `sessionId` 限定会话。评估读取已保存的结果，无需再次请求模型。
+
+- `accuracyPercent` 用命中数量除以可评分样本数，再乘以 100。明确记录了请求失败的样本计入分母，缺少有效结果事件的样本记为无法评分。没有可评分样本时返回 `null`。
+- `averageDurationMs` 是所选样本的平均请求处理耗时。`issues` 包含结果不符、请求失败和缺少有效结果的样本，可用其中的 `traceId` 查询原始事件。
 
 ## 计划扩展
 

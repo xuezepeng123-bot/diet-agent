@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -73,6 +74,20 @@ public class AgentTraceService {
                 traceId.toString()).stream().findFirst();
     }
 
+    List<LabeledSample> findLabeledSamples(UUID sessionId, int limit) {
+        String session = sessionId == null ? null : sessionId.toString();
+        return jdbc.query("""
+                SELECT t.trace_id, t.duration_ms, t.events_json, l.expected_status
+                FROM meal_agent_trace_label l
+                JOIN meal_agent_trace t ON t.trace_id = l.trace_id
+                WHERE (? IS NULL OR t.session_id = ?)
+                ORDER BY t.created_at DESC, t.trace_id DESC
+                LIMIT ?
+                """, (row, rowNumber) -> new LabeledSample(UUID.fromString(row.getString("trace_id")),
+                row.getString("expected_status"), row.getLong("duration_ms"),
+                parseEvents(row.getString("events_json"))), session, session, limit);
+    }
+
     private JsonNode parseEvents(String eventsJson) {
         try {
             return json.readTree(eventsJson);
@@ -84,4 +99,6 @@ public class AgentTraceService {
     public record Detail(UUID traceId, UUID sessionId, long durationMs, JsonNode events, Instant createdAt) {}
 
     public record Label(UUID traceId, String expectedStatus, String note, Instant updatedAt) {}
+
+    record LabeledSample(UUID traceId, String expectedStatus, long durationMs, JsonNode events) {}
 }

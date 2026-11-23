@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class RecommendationService {
+    static final Set<String> RESULT_STATUSES = Set.of("ASK", "RECOMMEND", "NO_MATCH");
+
     private final MealSearchService mealSearchService;
 
    
