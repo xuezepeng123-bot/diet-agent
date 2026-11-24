@@ -14,6 +14,7 @@
 - **Trace 人工标注**。按 `traceId` 保存期望结果和备注，供后续离线评估与实际结果对比。
 - **用户反馈**。用户可对单轮对话标记「有帮助」或「没帮助」，评估报告汇总样本的反馈分布。
 - **离线规则评估**。批量对比已标注 Trace 的实际结果和人工预期，返回准确率、平均耗时和待复查样本。
+- **LLM Judge**。单独触发千问评分，按百分制评价回复与结果的一致性和表达清晰度，并保存评分理由。
 
 ## 一轮请求怎么走
 
@@ -33,6 +34,8 @@
 | `PUT /api/traces/{traceId}/feedback` | 新增或更新该轮的用户反馈 |
 | `GET /api/traces/{traceId}/feedback` | 查询该轮的用户反馈 |
 | `GET /api/evaluations/traces` | 批量评估有人工标注的 Trace |
+| `POST /api/evaluations/traces/{traceId}/judge` | 调用评分模型并保存单轮评分 |
+| `GET /api/evaluations/traces/{traceId}/judge` | 查询该轮已保存的模型评分 |
 | `GET /api/health` | 检查 HTTP 服务是否启动 |
 
 ## 本地运行
@@ -54,9 +57,9 @@ INSERT INTO meal_item (name, meal_time, taste) VALUES
     ('冬瓜虾仁', '晚餐', '清淡');
 ```
 
-在同一个数据库中依次执行 [会话表](sql/meal_conversation.sql)、[推荐历史字段](sql/add_last_recommendation_ids.sql)、[Trace 表](sql/meal_agent_trace.sql)、[Trace 标注表](sql/meal_agent_trace_label.sql)和 [Trace 反馈表](sql/meal_agent_trace_feedback.sql)脚本。升级时执行现有数据库缺少的脚本。应用账号应能读取 `meal_item`、读写 `meal_conversation`、查询和插入 `meal_agent_trace`，并查询、插入和更新 `meal_agent_trace_label` 与 `meal_agent_trace_feedback`。
+在同一个数据库中依次执行 [会话表](sql/meal_conversation.sql)、[推荐历史字段](sql/add_last_recommendation_ids.sql)、[Trace 表](sql/meal_agent_trace.sql)、[Trace 标注表](sql/meal_agent_trace_label.sql)、[Trace 反馈表](sql/meal_agent_trace_feedback.sql)和 [Trace 评分表](sql/meal_agent_trace_judgment.sql)脚本。升级时执行现有数据库缺少的脚本。应用账号应能读取 `meal_item`、读写 `meal_conversation`、查询和插入 `meal_agent_trace`，并查询、插入和更新 `meal_agent_trace_label`、`meal_agent_trace_feedback` 与 `meal_agent_trace_judgment`。
 
-在运行 Maven 的终端设置 `DIET_DB_PASSWORD` 环境变量。如果要体验千问偏好提取或调用 ReAct 接口，再设置 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_BASE_URL`。
+在运行 Maven 的终端设置 `DIET_DB_PASSWORD` 环境变量。如果要体验千问偏好提取、ReAct 工具调用或 LLM Judge，再设置 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_BASE_URL`。
 
 ```sh
 mvn spring-boot:run
@@ -113,6 +116,18 @@ curl -sS 'http://127.0.0.1:8080/api/evaluations/traces?limit=20'
 - `accuracyPercent` 用命中数量除以可评分样本数，再乘以 100。明确记录了请求失败的样本计入分母，缺少有效结果事件的样本记为无法评分。没有可评分样本时返回 `null`。
 - `averageDurationMs` 是所选样本的平均请求处理耗时。`issues` 包含结果不符、请求失败和缺少有效结果的样本，可用其中的 `traceId` 查询原始事件。
 - `feedback` 汇总本批已标注样本中的有帮助、没帮助和未反馈数量。`helpfulPercent` 以已提交反馈的样本为分母，整批都未收到反馈时返回 `null`。
+
+### 用模型评价一轮回复
+
+先发起新一轮对话，取响应头的 `X-Trace-Id`。评分模型只接收该轮保存的回复、结果状态和菜品数量。评分上限为 100 分，结果一致性占 60 分，表达清晰度占 40 分。
+
+```sh
+TRACE_ID='<本轮 X-Trace-Id>'
+curl -sS -X POST "http://127.0.0.1:8080/api/evaluations/traces/$TRACE_ID/judge"
+curl -sS "http://127.0.0.1:8080/api/evaluations/traces/$TRACE_ID/judge"
+```
+
+`POST` 每次调用模型，成功时覆盖上次评分。`GET` 读取保存的分数、理由、模型名和评分时间。缺少回复记录的历史 Trace 返回 `422`，模型未配置返回 `503`，模型调用失败或输出无效返回 `502`。
 
 ## 计划扩展
 

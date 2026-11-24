@@ -51,6 +51,7 @@ class MealConversationTraceTest {
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.mealTime").value("晚餐"))
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.taste").value(nullValue()))
                 .andExpect(jsonPath("$.events[3].details.resultStatus").value("ASK"))
+                .andExpect(jsonPath("$.events[3].details.reply").value("你喜欢清淡还是微辣？"))
                 .andExpect(jsonPath("$.events[3].details.mealCount").value(0));
 
         var second = mvc.perform(post("/api/conversations/recommendations")

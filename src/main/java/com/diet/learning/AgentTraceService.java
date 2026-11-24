@@ -3,6 +3,7 @@ package com.diet.learning;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -94,6 +95,26 @@ public class AgentTraceService {
                 row.getTimestamp("updated_at").toInstant()), traceId.toString()).stream().findFirst();
     }
 
+    void saveJudgment(Judgment judgment) {
+        Timestamp evaluatedAt = Timestamp.from(judgment.evaluatedAt());
+        jdbc.update("""
+                INSERT INTO meal_agent_trace_judgment (trace_id, score, reason, model_name, evaluated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE score = ?, reason = ?, model_name = ?, evaluated_at = ?
+                """, judgment.traceId().toString(), judgment.score(), judgment.reason(), judgment.modelName(),
+                evaluatedAt, judgment.score(), judgment.reason(), judgment.modelName(), evaluatedAt);
+    }
+
+    Optional<Judgment> findJudgment(UUID traceId) {
+        return jdbc.query("""
+                SELECT score, reason, model_name, evaluated_at
+                FROM meal_agent_trace_judgment
+                WHERE trace_id = ?
+                """, (row, rowNumber) -> new Judgment(traceId, row.getInt("score"), row.getString("reason"),
+                row.getString("model_name"), row.getTimestamp("evaluated_at").toInstant()),
+                traceId.toString()).stream().findFirst();
+    }
+
     List<LabeledSample> findLabeledSamples(UUID sessionId, int limit) {
         String session = sessionId == null ? null : sessionId.toString();
         return jdbc.query("""
@@ -123,6 +144,8 @@ public class AgentTraceService {
     public record Label(UUID traceId, String expectedStatus, String note, Instant updatedAt) {}
 
     public record Feedback(UUID traceId, boolean helpful, Instant updatedAt) {}
+
+    public record Judgment(UUID traceId, int score, String reason, String modelName, Instant evaluatedAt) {}
 
     record LabeledSample(UUID traceId, String expectedStatus, long durationMs, JsonNode events, Boolean helpful) {}
 }

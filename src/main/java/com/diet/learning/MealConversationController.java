@@ -50,9 +50,10 @@ public class MealConversationController {
             }
 
             sessionId = saved.sessionId();
+            var result = saved.result();
             trace.record("REQUEST_FINISHED", Map.of(
-                    "resultStatus", saved.result().status(), "mealCount", saved.result().meals().size()));
-            return new Turn(sessionId, saved.result());
+                    "resultStatus", result.status(), "mealCount", result.meals().size(), "reply", result.reply()));
+            return new Turn(sessionId, result);
         } catch (RuntimeException error) {
             int httpStatus = error instanceof ResponseStatusException rejection
                     ? rejection.getStatusCode().value() : 500;
