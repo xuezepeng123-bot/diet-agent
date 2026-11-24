@@ -7,6 +7,7 @@
 ## 已实现功能
 
 - **多轮澄清与会话持久化**。通过 `sessionId` 恢复会话，合并新一轮提取的偏好，再决定追问还是查菜。 [会话服务](src/main/java/com/diet/learning/MealConversationService.java)
+- **对话编排与回复 Agent**。编排层调用偏好提取和会话服务，澄清 Worker 确定缺失条件，推荐服务筛选菜品。启用回复 Agent 后，可根据业务结果改写回复，异常时使用模板。 [编排层](src/main/java/com/diet/learning/MealConversationOrchestrator.java)
 - **结构化偏好与规则兜底**。校验千问返回的 JSON 及字段可选值，模型未配置、超时或输出校验失败时回退到关键词匹配。 [偏好提取](src/main/java/com/diet/learning/MealPreferenceExtractor.java)
 - **餐食查询与换一批**。MyBatis 按餐次和口味查询，在「换一批」时排除同一会话已推荐的菜品。 [餐食查询](src/main/resources/mapper/MealMapper.xml)
 - **Agent 工具调用**。独立的 ReAct 接口注册 `search_meals`，由模型选择调用，Agent 根据工具结果回复。 [Agent 接口](src/main/java/com/diet/learning/MealAgentController.java)
@@ -19,9 +20,10 @@
 ## 一轮请求怎么走
 
 1. `MealConversationController` 接收消息，校验参数并生成本轮 Trace ID。
-2. `MealPreferenceExtractor` 提取本轮餐次和口味。遇到「换一批」时直接进入换批分支。
-3. `MealConversationService` 更新会话，调用 `RecommendationService` 追问缺失字段或查询餐食，并保存推荐历史。
-4. `AgentTraceService` 保存本轮事件，调用方通过响应头中的 Trace ID 查看处理结果。
+2. `MealConversationOrchestrator` 选择普通推荐或「换一批」路径。普通推荐通过 `MealPreferenceExtractor` 提取本轮餐次和口味。
+3. `MealConversationService` 在事务内合并偏好。`MealClarificationWorker` 确定是否需要追问，条件齐全时由 `RecommendationService` 查询餐食并返回候选，会话服务保存推荐历史。
+4. 会话事务提交后，`MealReplyAgent` 可以根据结果组织回复。业务代码确定状态和菜品列表。
+5. `AgentTraceService` 保存本轮事件，调用方通过响应头中的 Trace ID 查看处理结果。
 
 | 接口 | 功能 |
 | --- | --- |
@@ -64,6 +66,8 @@ INSERT INTO meal_item (name, meal_time, taste) VALUES
 ```sh
 mvn spring-boot:run
 ```
+
+默认使用模板回复。设置 `DIET_AGENT_REPLY_ENABLED=true` 并配置千问后，多轮接口每轮可以额外调用一次回复 Agent。未配置模型、调用失败或输出格式异常时使用模板。`REQUEST_FINISHED` 的 `replySource` 和 `replyDurationMs` 记录回复来源与耗时。
 
 ## 接口演示
 

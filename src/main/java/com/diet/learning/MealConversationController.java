@@ -11,14 +11,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class MealConversationController {
-    private final MealConversationService conversationService;
-    private final MealPreferenceExtractor preferenceExtractor;
+    private final MealConversationOrchestrator orchestrator;
     private final AgentTraceService traceService;
 
-    public MealConversationController(MealConversationService conversationService,
-            MealPreferenceExtractor preferenceExtractor, AgentTraceService traceService) {
-        this.conversationService = conversationService;
-        this.preferenceExtractor = preferenceExtractor;
+    public MealConversationController(MealConversationOrchestrator orchestrator, AgentTraceService traceService) {
+        this.orchestrator = orchestrator;
         this.traceService = traceService;
     }
 
@@ -34,26 +31,9 @@ public class MealConversationController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入饮食需求");
             }
 
-            MealConversationService.SavedTurn saved;
-            if ("换一批".equals(request.message().strip())) {
-                trace.record("ROUTE_SELECTED", Map.of("route", "CHANGE_BATCH"));
-                saved = conversationService.changeBatch(sessionId);
-            } else {
-                trace.record("ROUTE_SELECTED", Map.of("route", "RECOMMENDATION"));
-                conversationService.checkSession(sessionId);
-                long extractionStartedAt = trace.elapsedMs();
-                var extraction = preferenceExtractor.extractWithDetails(request.message());
-                trace.record("PREFERENCES_EXTRACTED", Map.of(
-                        "durationMs", trace.elapsedMs() - extractionStartedAt,
-                        "extraction", extraction));
-                saved = conversationService.recommendTurn(sessionId, extraction.preferences());
-            }
-
-            sessionId = saved.sessionId();
-            var result = saved.result();
-            trace.record("REQUEST_FINISHED", Map.of(
-                    "resultStatus", result.status(), "mealCount", result.meals().size(), "reply", result.reply()));
-            return new Turn(sessionId, result);
+            var turn = orchestrator.recommend(sessionId, request.message(), trace);
+            sessionId = turn.sessionId();
+            return new Turn(sessionId, turn.result());
         } catch (RuntimeException error) {
             int httpStatus = error instanceof ResponseStatusException rejection
                     ? rejection.getStatusCode().value() : 500;

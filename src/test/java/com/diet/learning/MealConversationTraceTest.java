@@ -52,6 +52,7 @@ class MealConversationTraceTest {
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.taste").value(nullValue()))
                 .andExpect(jsonPath("$.events[3].details.resultStatus").value("ASK"))
                 .andExpect(jsonPath("$.events[3].details.reply").value("你喜欢清淡还是微辣？"))
+                .andExpect(jsonPath("$.events[3].details.replySource").value("TEMPLATE"))
                 .andExpect(jsonPath("$.events[3].details.mealCount").value(0));
 
         var second = mvc.perform(post("/api/conversations/recommendations")
@@ -71,6 +72,22 @@ class MealConversationTraceTest {
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.mealTime").value(nullValue()))
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.taste").value("清淡"))
                 .andExpect(jsonPath("$.events[3].details.mealCount").value(1));
+
+        var replacement = mvc.perform(post("/api/conversations/recommendations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"sessionId":"%s","message":"换一批"}
+                                """.formatted(sessionId)))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-Trace-Id"))
+                .andExpect(jsonPath("$.result.status").value("NO_MATCH"))
+                .andReturn().getResponse();
+
+        mvc.perform(get("/api/traces/{traceId}", replacement.getHeader("X-Trace-Id")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.events[*].name", contains("REQUEST_RECEIVED", "ROUTE_SELECTED",
+                        "REQUEST_FINISHED")))
+                .andExpect(jsonPath("$.events[1].details.route").value("CHANGE_BATCH"));
     }
 
     @Test
