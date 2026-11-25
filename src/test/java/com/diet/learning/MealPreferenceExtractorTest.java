@@ -18,7 +18,7 @@ class MealPreferenceExtractorTest {
     @Test
     void attributesValidPreferencesToModel() {
         var extractor = withModel(modelReply("""
-                {"mealTime":"晚餐","taste":"清淡"}
+                {"mealTime":"晚餐","taste":"清淡","intent":"MEAL_RECOMMENDATION","confidence":0.9}
                 """));
 
         var extraction = extractor.extractWithDetails("晚上想吃点不辣的");
@@ -26,6 +26,8 @@ class MealPreferenceExtractorTest {
         assertThat(extraction.preferences()).isEqualTo(new MealPreferenceExtractor.Preferences("晚餐", "清淡"));
         assertThat(extraction.source()).isEqualTo(MealPreferenceExtractor.Source.MODEL);
         assertThat(extraction.fallbackReason()).isNull();
+        assertThat(extraction.prediction()).isEqualTo(
+                new MealPreferenceExtractor.IntentPrediction(MealIntentRouter.Intent.MEAL_RECOMMENDATION, 0.9));
     }
 
     @Test

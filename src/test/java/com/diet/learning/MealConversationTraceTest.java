@@ -45,6 +45,7 @@ class MealConversationTraceTest {
                 .andExpect(jsonPath("$.events[*].name", contains("REQUEST_RECEIVED", "ROUTE_SELECTED",
                         "PREFERENCES_EXTRACTED", "REQUEST_FINISHED")))
                 .andExpect(jsonPath("$.events[1].details.route").value("RECOMMENDATION"))
+                .andExpect(jsonPath("$.events[1].details.intent").value("CLARIFY_NEEDED"))
                 .andExpect(jsonPath("$.events[2].details.durationMs").value(greaterThanOrEqualTo(0)))
                 .andExpect(jsonPath("$.events[2].details.extraction.source").value("KEYWORDS"))
                 .andExpect(jsonPath("$.events[2].details.extraction.fallbackReason").value("MODEL_NOT_CONFIGURED"))
@@ -69,6 +70,7 @@ class MealConversationTraceTest {
         mvc.perform(get("/api/traces/{traceId}", second.getHeader("X-Trace-Id")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sessionId").value(sessionId))
+                .andExpect(jsonPath("$.events[1].details.intent").value("MEAL_RECOMMENDATION"))
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.mealTime").value(nullValue()))
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.taste").value("清淡"))
                 .andExpect(jsonPath("$.events[3].details.mealCount").value(1));
@@ -76,7 +78,7 @@ class MealConversationTraceTest {
         var replacement = mvc.perform(post("/api/conversations/recommendations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"sessionId":"%s","message":"换一批"}
+                                {"sessionId":"%s","message":"再来一批。"}
                                 """.formatted(sessionId)))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Trace-Id"))
@@ -87,7 +89,8 @@ class MealConversationTraceTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.events[*].name", contains("REQUEST_RECEIVED", "ROUTE_SELECTED",
                         "REQUEST_FINISHED")))
-                .andExpect(jsonPath("$.events[1].details.route").value("CHANGE_BATCH"));
+                .andExpect(jsonPath("$.events[1].details.route").value("CHANGE_BATCH"))
+                .andExpect(jsonPath("$.events[1].details.intent").value("MEAL_ADJUST"));
     }
 
     @Test

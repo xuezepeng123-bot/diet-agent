@@ -1,6 +1,9 @@
 package com.diet.learning;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -46,6 +49,23 @@ public class RecommendationService {
             return new Result("NO_MATCH", reply, meals);
         }
         return new Result("RECOMMEND", "找到了符合条件的餐食。", meals);
+    }
+
+    Result planForTaste(String taste) {
+        Map<String, Meal> candidates = new HashMap<>();
+        for (Meal meal : mealSearchService.search(null, taste)) {
+            candidates.putIfAbsent(meal.mealTime(), meal);
+        }
+        List<Meal> plan = MealPreferenceExtractor.MEAL_TIMES.stream().map(candidates::get)
+                .filter(Objects::nonNull).toList();
+        if (plan.isEmpty()) {
+            return new Result("NO_MATCH", "没有找到符合条件的餐食，试试换个口味。", plan);
+        }
+        List<String> missing = MealPreferenceExtractor.MEAL_TIMES.stream()
+                .filter(time -> !candidates.containsKey(time)).toList();
+        String reply = missing.isEmpty() ? "已分别为早餐、午餐和晚餐找到餐食。"
+                : "已找到部分餐次的餐食，" + String.join("、", missing) + "暂时没有匹配项。";
+        return new Result("RECOMMEND", reply, plan);
     }
 
     public record Result(String status, String reply, List<Meal> meals) {}

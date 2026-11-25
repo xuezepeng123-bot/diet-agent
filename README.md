@@ -8,6 +8,7 @@
 
 - **多轮澄清与会话持久化**。通过 `sessionId` 恢复会话，合并新一轮提取的偏好，再决定追问还是查菜。 [会话服务](src/main/java/com/diet/learning/MealConversationService.java)
 - **对话编排与回复 Agent**。编排层调用偏好提取和会话服务，澄清 Worker 确定缺失条件，推荐服务筛选菜品。启用回复 Agent 后，可根据业务结果改写回复，异常时使用模板。 [编排层](src/main/java/com/diet/learning/MealConversationOrchestrator.java)
+- **六类意图路由**。识别餐食推荐、信息不足、调整推荐、多餐规划、健康风险和其他输入。规则可直接拦截健康风险，推荐结合会话中的餐次和口味决定是否追问。 [意图路由](src/main/java/com/diet/learning/MealIntentRouter.java)
 - **结构化偏好与规则兜底**。校验千问返回的 JSON 及字段可选值，模型未配置、超时或输出校验失败时回退到关键词匹配。 [偏好提取](src/main/java/com/diet/learning/MealPreferenceExtractor.java)
 - **餐食查询与换一批**。MyBatis 按餐次和口味查询，在「换一批」时排除同一会话已推荐的菜品。 [餐食查询](src/main/resources/mapper/MealMapper.xml)
 - **Agent 工具调用**。独立的 ReAct 接口注册 `search_meals`，由模型选择调用，Agent 根据工具结果回复。 [Agent 接口](src/main/java/com/diet/learning/MealAgentController.java)
@@ -20,7 +21,7 @@
 ## 一轮请求怎么走
 
 1. `MealConversationController` 接收消息，校验参数并生成本轮 Trace ID。
-2. `MealConversationOrchestrator` 选择普通推荐或「换一批」路径。普通推荐通过 `MealPreferenceExtractor` 提取本轮餐次和口味。
+2. `MealConversationOrchestrator` 根据关键词、`MealPreferenceExtractor` 的模型输出和已有偏好确定路由，分别处理调换推荐、规划三餐和引导回复。
 3. `MealConversationService` 在事务内合并偏好。`MealClarificationWorker` 确定是否需要追问，条件齐全时由 `RecommendationService` 查询餐食并返回候选，会话服务保存推荐历史。
 4. 会话事务提交后，`MealReplyAgent` 可以根据结果组织回复。业务代码确定状态和菜品列表。
 5. `AgentTraceService` 保存本轮事件，调用方通过响应头中的 Trace ID 查看处理结果。
@@ -82,6 +83,14 @@ curl -i http://127.0.0.1:8080/api/conversations/recommendations \
 沿用返回的 `sessionId`，依次发送「清淡」和「换一批」。使用上面的演示数据，第二轮返回清蒸鲈鱼，换批返回冬瓜虾仁。用任一轮响应头的 `X-Trace-Id` 查询 `GET /api/traces/{traceId}`。
 
 普通对话的 Trace 包含 `PREFERENCES_EXTRACTED`。查看 `details.extraction.source` 可以区分千问提取（`MODEL`）和关键词匹配（`KEYWORDS`）。关键词兜底会记录 `fallbackReason`，例如 `MODEL_NOT_CONFIGURED` 或 `MODEL_FAILURE`。`preferences` 中只记录本轮抽到的餐次和口味。换批直接沿用会话中的偏好，Trace 记录 `CHANGE_BATCH` 路由。`REQUEST_FINISHED` 的 `mealCount` 是本轮返回的餐食数量。
+
+### 查看意图路由
+
+- 「帮我规划三餐，清淡一点」走 `MEAL_PLAN`，按早、午、晚顺序各取至多一道菜，缺少候选的餐次会在回复中指出。三餐规划直接返回当次方案，会话保留单餐推荐历史。
+- 「再来一批」走 `MEAL_ADJUST`，复用会话的餐次和口味，排除已推荐的菜品。
+- 诊疗类需求走 `HEALTH_RISK`，闲聊等无关输入走 `OTHER`，返回固定引导文案。
+
+`ROUTE_SELECTED` 记录 `intent`、`route` 和 `reason`。模型置信度低于 `0.55` 且已有完整餐食条件时，先提示用户重新确认条件。条件不足时沿用已有的逐项追问。
 
 ### 标注一轮对话
 

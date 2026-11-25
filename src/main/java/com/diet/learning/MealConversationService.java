@@ -26,10 +26,12 @@ public class MealConversationService {
         this.json = json;
     }
 
-    public void checkSession(UUID sessionId) {
-        if (sessionId != null) {
-            findRequired(sessionId.toString(), false);
+    SessionContext readContext(UUID sessionId) {
+        if (sessionId == null) {
+            return new SessionContext(null, null, false);
         }
+        var row = findRequired(sessionId.toString(), false);
+        return new SessionContext(row.mealTime(), row.taste(), row.lastRecommendationIds() != null);
     }
 
     @Transactional//声明式事务
@@ -99,4 +101,6 @@ public class MealConversationService {
     }
 
     public record SavedTurn(UUID sessionId, RecommendationService.Result result) {}
+
+    record SessionContext(String mealTime, String taste, boolean hasRecommendations) {}
 }
