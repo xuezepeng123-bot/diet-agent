@@ -5,6 +5,7 @@ import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.DashScopeChatModel;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 
@@ -18,12 +19,14 @@ class MealPreferenceExtractorTest {
     @Test
     void attributesValidPreferencesToModel() {
         var extractor = withModel(modelReply("""
-                {"mealTime":"晚餐","taste":"清淡","intent":"MEAL_RECOMMENDATION","confidence":0.9}
+                {"mealTime":"晚餐","taste":"清淡","intent":"MEAL_RECOMMENDATION","confidence":0.9,
+                 "tags":{"cuisine":"粤菜","mood":"专注","unknown":"值"}}
                 """));
 
-        var extraction = extractor.extractWithDetails("晚上想吃点不辣的");
+        var extraction = extractor.extractWithDetails("晚上想吃点不辣的粤菜");
 
-        assertThat(extraction.preferences()).isEqualTo(new MealPreferenceExtractor.Preferences("晚餐", "清淡"));
+        assertThat(extraction.preferences()).isEqualTo(
+                new MealPreferenceExtractor.Preferences("晚餐", "清淡", Map.of("cuisine", "粤菜")));
         assertThat(extraction.source()).isEqualTo(MealPreferenceExtractor.Source.MODEL);
         assertThat(extraction.fallbackReason()).isNull();
         assertThat(extraction.prediction()).isEqualTo(

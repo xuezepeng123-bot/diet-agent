@@ -10,11 +10,12 @@
         <arg column="meal_time" javaType="java.lang.String"/>
         <arg column="taste" javaType="java.lang.String"/>
         <arg column="last_recommendation_ids" javaType="java.lang.String"/>
+        <arg column="preference_tags" javaType="java.lang.String"/>
     </constructor>
 </resultMap>
 
 <select id="findById" resultMap="sessionRow">
-    SELECT session_id, meal_time, taste, last_recommendation_ids
+    SELECT session_id, meal_time, taste, last_recommendation_ids, preference_tags
     FROM meal_conversation
     WHERE session_id = #{sessionId}
     <if test="forUpdate">
@@ -23,14 +24,17 @@
 </select>
 
     <insert id="insert">
-        INSERT INTO meal_conversation (session_id, meal_time, taste)
-        VALUES (#{sessionId}, #{mealTime,jdbcType=VARCHAR}, #{taste,jdbcType=VARCHAR})
+        INSERT INTO meal_conversation (session_id, meal_time, taste, preference_tags)
+        VALUES (#{sessionId}, #{mealTime,jdbcType=VARCHAR}, #{taste,jdbcType=VARCHAR}, #{tagsJson,jdbcType=VARCHAR})
     </insert>
 
     <update id="mergePreferences">
         UPDATE meal_conversation
         SET meal_time = COALESCE(#{mealTime,jdbcType=VARCHAR}, meal_time),
             taste = COALESCE(#{taste,jdbcType=VARCHAR}, taste)
+        <if test="tagsJson != null">
+            , preference_tags = JSON_MERGE_PATCH(COALESCE(preference_tags, JSON_OBJECT()), CAST(#{tagsJson} AS JSON))
+        </if>
         WHERE session_id = #{sessionId}
     </update>
 

@@ -47,8 +47,7 @@ public class MealConversationOrchestrator {
                 case RECOMMENDATION -> conversationService.recommendTurn(sessionId, extraction.preferences());
                 case CHANGE_BATCH -> conversationService.changeBatch(sessionId);
                 case MEAL_PLAN -> new MealConversationService.SavedTurn(sessionId,
-                        recommendationService.planForTaste(extraction.preferences().taste() == null
-                                ? context.taste() : extraction.preferences().taste()));
+                        recommendationService.planForPreferences(context.preferences().merge(extraction.preferences())));
                 case HEALTH_RISK, OTHER, CONFIRM_PREFERENCES -> guidance(sessionId, decision.route());
             };
         }

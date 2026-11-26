@@ -10,13 +10,15 @@ public interface MealConversationMapper {
 
     int insert(@Param("sessionId") String sessionId,
                @Param("mealTime") String mealTime,
-               @Param("taste") String taste);
+               @Param("taste") String taste,
+               @Param("tagsJson") String tagsJson);
     
     int mergePreferences(@Param("sessionId") String sessionId,
                          @Param("mealTime") String mealTime,
-                         @Param("taste") String taste);
+                         @Param("taste") String taste,
+                         @Param("tagsJson") String tagsJson);
 int saveLastRecommendations(@Param("sessionId") String sessionId,
                             @Param("mealIdsJson") String mealIdsJson);
     record SessionRow(String sessionId, String mealTime, String taste,
-                  String lastRecommendationIds) {}
+                  String lastRecommendationIds, String tagsJson) {}
 }

@@ -33,9 +33,9 @@ class MealIntentRouter {
             MealConversationService.SessionContext context) {
         var latest = extraction.preferences();
         var prediction = extraction.prediction();
-        boolean suppliedPreferences = latest.mealTime() != null || latest.taste() != null;
-        boolean complete = (latest.mealTime() != null || context.mealTime() != null)
-                && (latest.taste() != null || context.taste() != null);
+        boolean suppliedPreferences = latest.mealTime() != null || latest.taste() != null || !latest.tags().isEmpty();
+        boolean complete = (latest.mealTime() != null || context.preferences().mealTime() != null)
+                && (latest.taste() != null || context.preferences().taste() != null);
 
         if (prediction != null && prediction.intent() == Intent.HEALTH_RISK) {
             return new Decision(Intent.HEALTH_RISK, Route.HEALTH_RISK, Reason.MODEL);

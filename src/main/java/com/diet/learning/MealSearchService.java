@@ -1,6 +1,7 @@
 package com.diet.learning;
 
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,7 +13,11 @@ public class MealSearchService {
     }
 
     public List<Meal> search(String mealTime, String taste) {
-        return mealMapper.search(normalize(mealTime), normalize(taste));
+        return search(mealTime, taste, Map.of());
+    }
+
+    List<Meal> search(String mealTime, String taste, Map<String, String> tags) {
+        return mealMapper.search(normalize(mealTime), normalize(taste), tags);
     }
 
     private String normalize(String value) {

@@ -37,7 +37,7 @@ public class RecommendationService {
             return clarification.get();
         }
 
-        List<Meal> meals = mealSearchService.search(preferences.mealTime(), preferences.taste()).stream()
+        List<Meal> meals = mealSearchService.search(preferences.mealTime(), preferences.taste(), preferences.tags()).stream()
                 .filter(meal -> !excludedIds.contains(meal.id()))
                 .limit(limit)
                 .toList();
@@ -51,9 +51,9 @@ public class RecommendationService {
         return new Result("RECOMMEND", "找到了符合条件的餐食。", meals);
     }
 
-    Result planForTaste(String taste) {
+    Result planForPreferences(MealPreferenceExtractor.Preferences preferences) {
         Map<String, Meal> candidates = new HashMap<>();
-        for (Meal meal : mealSearchService.search(null, taste)) {
+        for (Meal meal : mealSearchService.search(null, preferences.taste(), preferences.tags())) {
             candidates.putIfAbsent(meal.mealTime(), meal);
         }
         List<Meal> plan = MealPreferenceExtractor.MEAL_TIMES.stream().map(candidates::get)

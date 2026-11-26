@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -28,21 +29,22 @@ public class MealConversationService {
 
     SessionContext readContext(UUID sessionId) {
         if (sessionId == null) {
-            return new SessionContext(null, null, false);
+            return new SessionContext(new MealPreferenceExtractor.Preferences(null, null), false);
         }
         var row = findRequired(sessionId.toString(), false);
-        return new SessionContext(row.mealTime(), row.taste(), row.lastRecommendationIds() != null);
+        return new SessionContext(readPreferences(row), row.lastRecommendationIds() != null);
     }
 
     @Transactional//声明式事务
     public SavedTurn recommendTurn(UUID sessionId, MealPreferenceExtractor.Preferences latest) {
         UUID id = sessionId == null ? UUID.randomUUID() : sessionId;
         String key = id.toString();
+        String tagsJson = latest.tags().isEmpty() ? null : json.valueToTree(latest.tags()).toString();
 
         if (sessionId == null) {
-            mapper.insert(key, latest.mealTime(), latest.taste());
+            mapper.insert(key, latest.mealTime(), latest.taste(), tagsJson);
         } else {
-            mapper.mergePreferences(key, latest.mealTime(), latest.taste());
+            mapper.mergePreferences(key, latest.mealTime(), latest.taste(), tagsJson);
         }
 
         return recommendAndSave(id, findRequired(key, false), Set.of());
@@ -78,9 +80,7 @@ public class MealConversationService {
 
     private SavedTurn recommendAndSave(UUID id, MealConversationMapper.SessionRow row,
             Set<Long> excludedIds) {
-        var preferences = new MealPreferenceExtractor.Preferences(row.mealTime(), row.taste());
-        var result = recommendationService.recommendForPreferences(
-                preferences, excludedIds, BATCH_SIZE);
+        var result = recommendationService.recommendForPreferences(readPreferences(row), excludedIds, BATCH_SIZE);
 
                 if (!result.meals().isEmpty()) {
                     Set<Long> history = new LinkedHashSet<>(readRecommendationIds(row.lastRecommendationIds()));
@@ -90,6 +90,18 @@ public class MealConversationService {
                     mapper.saveLastRecommendations(id.toString(), json.valueToTree(history).toString());
                 }
         return new SavedTurn(id, result);
+    }
+
+    private MealPreferenceExtractor.Preferences readPreferences(MealConversationMapper.SessionRow row) {
+        Map<String, String> tags = Map.of();
+        if (row.tagsJson() != null) {
+            try {
+                tags = MealSlotDictionary.fromJson(json.readTree(row.tagsJson()));
+            } catch (JsonProcessingException error) {
+                throw new IllegalStateException("会话标签格式无效", error);
+            }
+        }
+        return new MealPreferenceExtractor.Preferences(row.mealTime(), row.taste(), tags);
     }
 
     private MealConversationMapper.SessionRow findRequired(String sessionId, boolean forUpdate) {
@@ -102,5 +114,5 @@ public class MealConversationService {
 
     public record SavedTurn(UUID sessionId, RecommendationService.Result result) {}
 
-    record SessionContext(String mealTime, String taste, boolean hasRecommendations) {}
+    record SessionContext(MealPreferenceExtractor.Preferences preferences, boolean hasRecommendations) {}
 }

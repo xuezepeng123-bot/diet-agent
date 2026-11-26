@@ -14,6 +14,14 @@
                 AND taste = #{taste}
             </if>
         </where>
-        ORDER BY id
+        ORDER BY
+        <if test="!tags.isEmpty()">
+            (
+                <foreach collection="tags" index="slot" item="value" separator=" + ">
+                    COALESCE(JSON_CONTAINS(preference_tags, JSON_QUOTE(#{value}), CONCAT('$.', #{slot})), 0)
+                </foreach>
+            ) DESC,
+        </if>
+        id
     </select>
 </mapper>

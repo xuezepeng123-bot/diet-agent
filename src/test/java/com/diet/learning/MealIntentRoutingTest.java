@@ -47,6 +47,33 @@ class MealIntentRoutingTest {
     }
 
     @Test
+    void mergesOptionalPreferencesAndRanksMealsWhenRecommendingAndChangingBatch() throws Exception {
+        insertTaggedMeal("清蒸虾", "清淡", """
+                {"cuisine":["粤菜"],"convenience":["快手"],"healthGoal":["控油"]}
+                """);
+        String fullMatch = """
+                {"mood":["放松"],"scene":["独食"],"cuisine":["粤菜"],"convenience":["快手"],"healthGoal":["控油"]}
+                """;
+        insertTaggedMeal("白灼虾", "清淡", fullMatch);
+        insertTaggedMeal("香辣虾", "微辣", fullMatch);
+
+        var clarification = recommend(Map.of("message", "晚餐想放松，独食"))
+                .andExpect(jsonPath("$.result.status").value("ASK"))
+                .andReturn().getResponse();
+        String session = json.readTree(clarification.getContentAsString()).path("sessionId").asText();
+
+        recommend(Map.of("sessionId", session, "message", "清淡，想吃粤菜，最好快手和控油"))
+                .andExpect(jsonPath("$.result.meals[*].name", contains("白灼虾")));
+        recommend(Map.of("sessionId", session, "message", "再来一批"))
+                .andExpect(jsonPath("$.result.meals[*].name", contains("清蒸虾")));
+        recommend(Map.of("sessionId", session, "message", "再来一批"))
+                .andExpect(jsonPath("$.result.meals[*].name", contains("清蒸鲈鱼")));
+
+        recommend(Map.of("sessionId", session, "message", "帮我规划三餐"))
+                .andExpect(jsonPath("$.result.meals[?(@.mealTime == '晚餐')].name", contains("白灼虾")));
+    }
+
+    @Test
     void routesHealthRiskAndOffTopicRequestsToGuidance() throws Exception {
         var risk = recommend(Map.of("message", "帮我规划三餐治好糖尿病"))
                 .andExpect(jsonPath("$.result.status").value("ASK"))
@@ -72,5 +99,10 @@ class MealIntentRoutingTest {
                         .content(json.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Trace-Id"));
+    }
+
+    private void insertTaggedMeal(String name, String taste, String tags) {
+        jdbc.update("INSERT INTO meal_item (name, meal_time, taste, preference_tags) VALUES (?, '晚餐', ?, ?)",
+                name, taste, tags);
     }
 }
