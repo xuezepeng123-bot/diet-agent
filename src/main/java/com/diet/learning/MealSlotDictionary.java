@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-final class MealSlotDictionary {
+public final class MealSlotDictionary {
     static final Map<String, List<String>> OPTIONS = Map.of(
             "mood", List.of("放松", "提振", "慰藉"),
             "scene", List.of("独食", "家庭", "聚餐"),
@@ -14,6 +14,10 @@ final class MealSlotDictionary {
             "convenience", List.of("快手", "可外带", "可备餐"));
 
     private MealSlotDictionary() {}
+
+    public static boolean supports(String slot, String value) {
+        return OPTIONS.getOrDefault(slot, List.of()).contains(value);
+    }
 
     static Map<String, String> fromText(String text) {
         var tags = new HashMap<String, String>();

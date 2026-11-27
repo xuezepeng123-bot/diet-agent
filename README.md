@@ -2,7 +2,7 @@
 
 个人项目。用户用自然语言描述想吃什么，服务识别餐次和口味，在信息不足时追问，条件齐全后从 MySQL 菜单中推荐餐食。同一会话可以继续补充偏好或要求「换一批」。
 
-**技术栈** Java 21 · Spring Boot · MyBatis · MySQL · AgentScope · 通义千问 · Maven
+**技术栈** Java 21 · Spring Boot · MyBatis · MySQL · gRPC · AgentScope · 通义千问 · Maven
 
 ## 已实现功能
 
@@ -11,7 +11,7 @@
 - **六类意图路由**。识别餐食推荐、信息不足、调整推荐、多餐规划、健康风险和其他输入。规则可直接拦截健康风险，推荐结合会话中的餐次和口味决定是否追问。 [意图路由](src/main/java/com/diet/learning/MealIntentRouter.java)
 - **结构化偏好与规则兜底**。校验千问返回的 JSON 及字段可选值，模型未配置、超时或输出校验失败时回退到关键词匹配。 [偏好提取](src/main/java/com/diet/learning/MealPreferenceExtractor.java)
 - **七维偏好槽位**。按餐次和口味筛选，再按心情、场景、饮食目标、菜系和便捷性命中的标签数排序。可选偏好随会话保存，没有标签的菜品也可参与推荐。 [标签词典](src/main/java/com/diet/learning/MealSlotDictionary.java)
-- **餐食查询与换一批**。MyBatis 按餐次和口味查询，在「换一批」时排除同一会话已推荐的菜品。 [餐食查询](src/main/resources/mapper/MealMapper.xml)
+- **餐食查询与换一批**。多轮推荐、换批、三餐规划、HTTP 菜单查询和 `search_meals` 共用 gRPC 客户端。查询进程通过 MyBatis 查菜，换批时对话服务排除同一会话已推荐的菜品。 [RPC 协议](src/main/proto/meal_search.proto)
 - **Agent 工具调用**。独立的 ReAct 接口注册 `search_meals`，由模型选择调用，Agent 根据工具结果回复。 [Agent 接口](src/main/java/com/diet/learning/MealAgentController.java)
 - **对话 Trace**。会话接口返回 `X-Trace-Id`，记录路由、偏好提取方式、兜底原因、提取耗时和推荐结果，支持按 ID 查询。 [Trace 服务](src/main/java/com/diet/learning/AgentTraceService.java)
 - **Trace 人工标注**。按 `traceId` 保存期望结果和备注，供后续离线评估与实际结果对比。
@@ -23,7 +23,7 @@
 
 1. `MealConversationController` 接收消息，校验参数并生成本轮 Trace ID。
 2. `MealConversationOrchestrator` 根据关键词、`MealPreferenceExtractor` 的模型输出和已有偏好确定路由，分别处理调换推荐、规划三餐和引导回复。
-3. `MealConversationService` 在事务内合并偏好。`MealClarificationWorker` 确定是否需要追问，条件齐全时由 `RecommendationService` 查询餐食并返回候选，会话服务保存推荐历史。
+3. `MealConversationService` 在事务内合并偏好。条件齐全时，`RecommendationService` 调用 `SearchMeals` 获取按偏好排序的候选，会话服务保存推荐历史。
 4. 会话事务提交后，`MealReplyAgent` 可以根据结果组织回复。业务代码确定状态和菜品列表。
 5. `AgentTraceService` 保存本轮事件，调用方通过响应头中的 Trace ID 查看处理结果。
 
@@ -71,13 +71,26 @@ SET preference_tags = '{"cuisine":["粤菜"],"convenience":["快手"]}'
 WHERE name = '清蒸鲈鱼';
 ```
 
-在运行 Maven 的终端设置 `DIET_DB_PASSWORD` 环境变量。如果要体验千问偏好提取、ReAct 工具调用或 LLM Judge，再设置 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_BASE_URL`。
+两个进程都需要设置 `DIET_DB_PASSWORD`。如果要体验千问偏好提取、ReAct 工具调用或 LLM Judge，在 Agent 进程中设置 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_BASE_URL`。
+
+构建一次，在第一个终端启动菜品查询服务。
 
 ```sh
-mvn spring-boot:run
+mvn -DskipTests package
+java -jar target/diet-agent-0.1.0-SNAPSHOT.jar --meal-search-server
 ```
 
+在第二个终端启动 Agent 的 HTTP 服务。
+
+```sh
+java -jar target/diet-agent-0.1.0-SNAPSHOT.jar
+```
+
+gRPC 默认使用本机 `127.0.0.1:50051`。修改端口时，两个进程的 `DIET_MEAL_SEARCH_PORT` 需要一致。客户端默认等待 2000 毫秒，可通过 `DIET_MEAL_SEARCH_DEADLINE_MS` 调整。查询正常但无候选时，推荐接口返回 `NO_MATCH`，菜单接口返回空列表。查询服务不可用或超时，两个接口返回 HTTP `503`。
+
 默认使用模板回复。设置 `DIET_AGENT_REPLY_ENABLED=true` 并配置千问后，多轮接口每轮可以额外调用一次回复 Agent。未配置模型、调用失败或输出格式异常时使用模板。`REQUEST_FINISHED` 的 `replySource` 和 `replyDurationMs` 记录回复来源与耗时。
+
+运行 `mvn verify` 时，将查询进程和测试进程指向同一个独立测试库。测试库的初始菜单使用清蒸鲈鱼（晚餐、清淡）、宫保鸡丁（晚餐、微辣）和杂粮饭（午餐、清淡）。测试账号需要插入和删除临时菜单样本的权限。
 
 ## 接口演示
 
@@ -150,7 +163,3 @@ curl -sS "http://127.0.0.1:8080/api/evaluations/traces/$TRACE_ID/judge"
 ```
 
 `POST` 每次调用模型，成功时覆盖上次评分。`GET` 读取保存的分数、理由、模型名和评分时间。缺少回复记录的历史 Trace 返回 `422`，模型未配置返回 `503`，模型调用失败或输出无效返回 `502`。
-
-## 计划扩展
-
-- **餐食查询 RPC（gRPC）**。将 `SearchMeals` 查询拆为独立服务，推荐流程和 `search_meals` 共用同一个 RPC 客户端。验收覆盖推荐、换批、空结果和远程服务不可用四种情况。

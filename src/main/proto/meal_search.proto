@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package diet.meals.v1;
+
+option java_package = "com.diet.search.rpc";
+option java_multiple_files = true;
+
+service MealLookup {
+  rpc SearchMeals(SearchMealsRequest) returns (SearchMealsResponse);
+}
+
+message SearchMealsRequest {
+  string meal_time = 1;
+  string taste = 2;
+  map<string, string> tags = 3;
+}
+
+message SearchMealsResponse {
+  repeated MealItem meals = 1;
+}
+
+message MealItem {
+  int64 id = 1;
+  string name = 2;
+  string meal_time = 3;
+  string taste = 4;
+}

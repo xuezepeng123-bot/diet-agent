@@ -7,13 +7,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.context.jdbc.SqlConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -23,17 +25,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {"DASHSCOPE_API_KEY=", "DASHSCOPE_BASE_URL="})
 @AutoConfigureMockMvc
 @Transactional
+@SqlConfig(transactionMode = SqlConfig.TransactionMode.ISOLATED)
 class MealIntentRoutingTest {
     @Autowired
     private MockMvc mvc;
     @Autowired
-    private JdbcTemplate jdbc;
-    @Autowired
     private ObjectMapper json;
 
     @Test
+    @Sql(statements = "INSERT INTO meal_item (name, meal_time, taste) VALUES ('测试小米粥', '早餐', '清淡')")
+    @Sql(statements = "DELETE FROM meal_item WHERE name = '测试小米粥'", executionPhase = AFTER_TEST_METHOD)
     void returnsAPlanInMealOrderUsingTheRequestedTaste() throws Exception {
-        jdbc.update("INSERT INTO meal_item (name, meal_time, taste) VALUES (?, ?, ?)", "小米粥", "早餐", "清淡");
         var response = recommend(Map.of("message", "帮我规划三餐，口味清淡"))
                 .andExpect(jsonPath("$.result.status").value("RECOMMEND"))
                 .andExpect(jsonPath("$.result.meals[*].mealTime", contains("早餐", "午餐", "晚餐")))
@@ -47,30 +49,29 @@ class MealIntentRoutingTest {
     }
 
     @Test
+    @Sql(statements = """
+            INSERT INTO meal_item (name, meal_time, taste, preference_tags) VALUES
+              ('测试清蒸虾', '晚餐', '清淡', '{"cuisine":["粤菜"],"convenience":["快手"],"healthGoal":["控油"]}'),
+              ('测试白灼虾', '晚餐', '清淡', '{"mood":["放松"],"scene":["独食"],"cuisine":["粤菜"],"convenience":["快手"],"healthGoal":["控油"]}'),
+              ('测试香辣虾', '晚餐', '微辣', '{"mood":["放松"],"scene":["独食"],"cuisine":["粤菜"],"convenience":["快手"],"healthGoal":["控油"]}');
+            """)
+    @Sql(statements = "DELETE FROM meal_item WHERE name IN ('测试清蒸虾', '测试白灼虾', '测试香辣虾')",
+            executionPhase = AFTER_TEST_METHOD)
     void mergesOptionalPreferencesAndRanksMealsWhenRecommendingAndChangingBatch() throws Exception {
-        insertTaggedMeal("清蒸虾", "清淡", """
-                {"cuisine":["粤菜"],"convenience":["快手"],"healthGoal":["控油"]}
-                """);
-        String fullMatch = """
-                {"mood":["放松"],"scene":["独食"],"cuisine":["粤菜"],"convenience":["快手"],"healthGoal":["控油"]}
-                """;
-        insertTaggedMeal("白灼虾", "清淡", fullMatch);
-        insertTaggedMeal("香辣虾", "微辣", fullMatch);
-
         var clarification = recommend(Map.of("message", "晚餐想放松，独食"))
                 .andExpect(jsonPath("$.result.status").value("ASK"))
                 .andReturn().getResponse();
         String session = json.readTree(clarification.getContentAsString()).path("sessionId").asText();
 
         recommend(Map.of("sessionId", session, "message", "清淡，想吃粤菜，最好快手和控油"))
-                .andExpect(jsonPath("$.result.meals[*].name", contains("白灼虾")));
+                .andExpect(jsonPath("$.result.meals[*].name", contains("测试白灼虾")));
         recommend(Map.of("sessionId", session, "message", "再来一批"))
-                .andExpect(jsonPath("$.result.meals[*].name", contains("清蒸虾")));
+                .andExpect(jsonPath("$.result.meals[*].name", contains("测试清蒸虾")));
         recommend(Map.of("sessionId", session, "message", "再来一批"))
                 .andExpect(jsonPath("$.result.meals[*].name", contains("清蒸鲈鱼")));
 
         recommend(Map.of("sessionId", session, "message", "帮我规划三餐"))
-                .andExpect(jsonPath("$.result.meals[?(@.mealTime == '晚餐')].name", contains("白灼虾")));
+                .andExpect(jsonPath("$.result.meals[?(@.mealTime == '晚餐')].name", contains("测试白灼虾")));
     }
 
     @Test
@@ -99,10 +100,5 @@ class MealIntentRoutingTest {
                         .content(json.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Trace-Id"));
-    }
-
-    private void insertTaggedMeal(String name, String taste, String tags) {
-        jdbc.update("INSERT INTO meal_item (name, meal_time, taste, preference_tags) VALUES (?, '晚餐', ?, ?)",
-                name, taste, tags);
     }
 }
