@@ -34,8 +34,7 @@ class MealIntentRouter {
         var latest = extraction.preferences();
         var prediction = extraction.prediction();
         boolean suppliedPreferences = latest.mealTime() != null || latest.taste() != null || !latest.tags().isEmpty();
-        boolean complete = (latest.mealTime() != null || context.preferences().mealTime() != null)
-                && (latest.taste() != null || context.preferences().taste() != null);
+        boolean complete = MealClarificationWorker.missingSlots(context.preferences().merge(latest)).isEmpty();
 
         if (prediction != null && prediction.intent() == Intent.HEALTH_RISK) {
             return new Decision(Intent.HEALTH_RISK, Route.HEALTH_RISK, Reason.MODEL);

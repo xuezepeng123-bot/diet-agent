@@ -60,9 +60,10 @@ public class MealConversationOrchestrator {
             case MEAL_PLAN, HEALTH_RISK, OTHER, CONFIRM_PREFERENCES ->
                     new MealReplyAgent.Reply(outcome.reply(), MealReplyAgent.Source.TEMPLATE);
         };
-        var result = new RecommendationService.Result(outcome.status(), reply.text(), outcome.meals());
+        var result = new RecommendationService.Result(outcome.status(), reply.text(), outcome.meals(), outcome.missingSlots());
         trace.record("REQUEST_FINISHED", Map.of(
                 "resultStatus", result.status(), "mealCount", result.meals().size(), "reply", result.reply(),
+                "missingSlots", result.missingSlots(),
                 "replySource", reply.source(), "replyDurationMs", trace.elapsedMs() - replyStartedAt));
         return new MealConversationService.SavedTurn(saved.sessionId(), result);
     }
@@ -76,7 +77,7 @@ public class MealConversationOrchestrator {
         String reply = switch (route) {
             case HEALTH_RISK -> "涉及诊疗的饮食需求请咨询医生或注册营养师。我可以帮你查找日常餐食。";
             case OTHER -> "我可以推荐餐食或规划三餐。你想吃哪一餐，口味偏清淡还是微辣？";
-            case CONFIRM_PREFERENCES -> "请再说一次想吃哪一餐，口味偏清淡还是微辣？";
+            case CONFIRM_PREFERENCES -> "能再确认一下想吃哪一餐，以及最看重什么吗？";
             default -> throw new IllegalArgumentException("该路由需要执行业务处理");
         };
         return new MealConversationService.SavedTurn(sessionId,

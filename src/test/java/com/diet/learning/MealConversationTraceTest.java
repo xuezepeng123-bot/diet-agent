@@ -36,6 +36,7 @@ class MealConversationTraceTest {
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Trace-Id"))
                 .andExpect(jsonPath("$.result.status").value("ASK"))
+                .andExpect(jsonPath("$.result.missingSlots", contains("healthGoal")))
                 .andReturn().getResponse();
         String sessionId = json.readTree(first.getContentAsByteArray()).get("sessionId").asText();
 
@@ -52,7 +53,8 @@ class MealConversationTraceTest {
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.mealTime").value("晚餐"))
                 .andExpect(jsonPath("$.events[2].details.extraction.preferences.taste").value(nullValue()))
                 .andExpect(jsonPath("$.events[3].details.resultStatus").value("ASK"))
-                .andExpect(jsonPath("$.events[3].details.reply").value("你喜欢清淡还是微辣？"))
+                .andExpect(jsonPath("$.events[3].details.reply").value("这顿想按口味来，还是更看重均衡、控油或高蛋白？"))
+                .andExpect(jsonPath("$.events[3].details.missingSlots", contains("healthGoal")))
                 .andExpect(jsonPath("$.events[3].details.replySource").value("TEMPLATE"))
                 .andExpect(jsonPath("$.events[3].details.mealCount").value(0));
 

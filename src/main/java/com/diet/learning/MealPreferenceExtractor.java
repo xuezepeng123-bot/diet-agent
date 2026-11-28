@@ -27,6 +27,7 @@ public class MealPreferenceExtractor {
             mealTime 只能是早餐、午餐、晚餐。taste 只能是清淡、微辣。
             tags 是可选偏好对象，按用户明确表达的内容填入，每个字段最多一个值。字段和允许值为 %s。
             未确定的 mealTime 和 taste 填 null，未确定的标签省略。不要把被用户排除的选项当成偏好。
+            对单餐推荐，有餐次且明确了健康目标、口味、菜系、场景或便捷性中的任一项即可进入推荐。
             intent 取 MEAL_RECOMMENDATION（推荐）、CLARIFY_NEEDED（信息不足）、MEAL_ADJUST（调整上次推荐）、
             MEAL_PLAN（多餐规划）、HEALTH_RISK（诊疗或极端节食请求）或 OTHER（非餐食需求）。confidence 是 0 到 1 的数字。
             “我想吃晚餐”应输出 {"mealTime":"晚餐","taste":null,"tags":{},"intent":"CLARIFY_NEEDED","confidence":0.95}

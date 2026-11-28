@@ -80,7 +80,8 @@ class MealConversationOrchestratorTest {
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Trace-Id"))
                 .andExpect(jsonPath("$.result.status").value("ASK"))
-                .andExpect(jsonPath("$.result.reply").value("你喜欢清淡还是微辣？"))
+                .andExpect(jsonPath("$.result.reply").value("这顿想按口味来，还是更看重均衡、控油或高蛋白？"))
+                .andExpect(jsonPath("$.result.missingSlots[0]").value("healthGoal"))
                 .andReturn().getResponse();
 
         mvc.perform(get("/api/traces/{traceId}", response.getHeader("X-Trace-Id")))

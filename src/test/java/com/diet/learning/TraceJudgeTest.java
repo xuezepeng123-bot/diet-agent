@@ -64,7 +64,7 @@ class TraceJudgeTest {
 
         verify(model).stream(argThat(messages -> {
             String payload = messages.getLast().getTextContent();
-            return payload.contains("你喜欢清淡还是微辣？") && !payload.contains("test-input-only");
+            return payload.contains("这顿想按口味来，还是更看重均衡、控油或高蛋白？") && !payload.contains("test-input-only");
         }), anyList(), any());
 
         mvc.perform(post(PATH, traceId)).andExpect(status().isBadGateway());

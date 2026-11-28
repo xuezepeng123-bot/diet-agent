@@ -1,5 +1,6 @@
 package com.diet.learning;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +46,7 @@ public class RecommendationService {
         if (meals.isEmpty()) {
             String reply = excludedIds.isEmpty()
                     ? "没有找到符合条件的餐食。"
-                    : "当前条件下没有其他餐食，试试换个口味吧。";
+                    : "当前条件下没有其他餐食，可以试试调整饮食偏好。";
             return new Result("NO_MATCH", reply, meals);
         }
         return new Result("RECOMMEND", "找到了符合条件的餐食。", meals);
@@ -68,5 +69,10 @@ public class RecommendationService {
         return new Result("RECOMMEND", reply, plan);
     }
 
-    public record Result(String status, String reply, List<Meal> meals) {}
+    public record Result(String status, String reply, List<Meal> meals,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY) List<String> missingSlots) {
+        public Result(String status, String reply, List<Meal> meals) {
+            this(status, reply, meals, List.of());
+        }
+    }
 }

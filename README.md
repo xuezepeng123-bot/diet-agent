@@ -8,9 +8,9 @@
 
 - **多轮澄清与会话持久化**。通过 `sessionId` 恢复会话，合并新一轮提取的偏好，再决定追问还是查菜。 [会话服务](src/main/java/com/diet/learning/MealConversationService.java)
 - **对话编排与回复 Agent**。编排层调用偏好提取和会话服务，澄清 Worker 确定缺失条件，推荐服务筛选菜品。启用回复 Agent 后，可根据业务结果改写回复，异常时使用模板。 [编排层](src/main/java/com/diet/learning/MealConversationOrchestrator.java)
-- **六类意图路由**。识别餐食推荐、信息不足、调整推荐、多餐规划、健康风险和其他输入。规则可直接拦截健康风险，推荐结合会话中的餐次和口味决定是否追问。 [意图路由](src/main/java/com/diet/learning/MealIntentRouter.java)
+- **六类意图路由**。识别餐食推荐、信息不足、调整推荐、多餐规划、健康风险和其他输入。单餐推荐需要餐次，以及健康目标、口味、菜系、场景或便捷性中的任一项。 [澄清规则](src/main/java/com/diet/learning/MealClarificationWorker.java)
 - **结构化偏好与规则兜底**。校验千问返回的 JSON 及字段可选值，模型未配置、超时或输出校验失败时回退到关键词匹配。 [偏好提取](src/main/java/com/diet/learning/MealPreferenceExtractor.java)
-- **七维偏好槽位**。按餐次和口味筛选，再按心情、场景、饮食目标、菜系和便捷性命中的标签数排序。可选偏好随会话保存，没有标签的菜品也可参与推荐。 [标签词典](src/main/java/com/diet/learning/MealSlotDictionary.java)
+- **七维偏好槽位**。单餐推荐按餐次筛选，用户给出口味时也按口味筛选，再按心情、场景、饮食目标、菜系和便捷性命中的标签数排序。偏好随会话保存，没有标签的菜品也可参与推荐。 [标签词典](src/main/java/com/diet/learning/MealSlotDictionary.java)
 - **餐食查询与换一批**。多轮推荐、换批、三餐规划、HTTP 菜单查询和 `search_meals` 共用 gRPC 客户端。查询进程通过 MyBatis 查菜，换批时对话服务排除同一会话已推荐的菜品。 [RPC 协议](src/main/proto/meal_search.proto)
 - **Agent 工具调用**。独立的 ReAct 接口注册 `search_meals`，由模型选择调用，Agent 根据工具结果回复。 [Agent 接口](src/main/java/com/diet/learning/MealAgentController.java)
 - **对话 Trace**。会话接口返回 `X-Trace-Id`，记录路由、偏好提取方式、兜底原因、提取耗时和推荐结果，支持按 ID 查询。 [Trace 服务](src/main/java/com/diet/learning/AgentTraceService.java)
@@ -94,7 +94,7 @@ gRPC 默认使用本机 `127.0.0.1:50051`。修改端口时，两个进程的 `D
 
 ## 接口演示
 
-第一轮只提供餐次，预期返回 `ASK`（等待补充口味）及 `sessionId`。
+第一轮只提供餐次，预期返回 `ASK`、`sessionId` 和 `result.missingSlots: ["healthGoal"]`。回复会提示补充健康目标或口味。已有明确菜系时，例如「晚餐想吃粤菜」，可以直接查询。
 
 ```sh
 curl -i http://127.0.0.1:8080/api/conversations/recommendations \
@@ -104,7 +104,7 @@ curl -i http://127.0.0.1:8080/api/conversations/recommendations \
 
 沿用返回的 `sessionId`，依次发送「清淡」和「换一批」。使用上面的演示数据，第二轮返回清蒸鲈鱼，换批返回冬瓜虾仁。用任一轮响应头的 `X-Trace-Id` 查询 `GET /api/traces/{traceId}`。
 
-普通对话的 Trace 包含 `PREFERENCES_EXTRACTED`。查看 `details.extraction.source` 可以区分千问提取（`MODEL`）和关键词匹配（`KEYWORDS`）。关键词兜底会记录 `fallbackReason`，例如 `MODEL_NOT_CONFIGURED` 或 `MODEL_FAILURE`。`preferences` 记录本轮抽到的餐次、口味和可选标签。换批直接沿用会话中的偏好，Trace 记录 `CHANGE_BATCH` 路由。`REQUEST_FINISHED` 的 `mealCount` 是本轮返回的餐食数量。
+普通对话的 Trace 包含 `PREFERENCES_EXTRACTED`。查看 `details.extraction.source` 可以区分千问提取（`MODEL`）和关键词匹配（`KEYWORDS`）。关键词兜底会记录 `fallbackReason`，例如 `MODEL_NOT_CONFIGURED` 或 `MODEL_FAILURE`。`preferences` 记录本轮抽到的餐次、口味和可选标签。换批直接沿用会话中的偏好，Trace 记录 `CHANGE_BATCH` 路由。`REQUEST_FINISHED` 记录本轮的餐食数量和缺失槽位。
 
 ### 查看意图路由
 
@@ -122,7 +122,7 @@ curl -i http://127.0.0.1:8080/api/conversations/recommendations \
 TRACE_ID='<第一轮 X-Trace-Id>'
 curl -i -X PUT "http://127.0.0.1:8080/api/traces/$TRACE_ID/label" \
   -H 'Content-Type: application/json' \
-  -d '{"expectedStatus":"ASK","note":"缺少口味，应该先追问"}'
+  -d '{"expectedStatus":"ASK","note":"只给了餐次，应该先追问饮食偏好"}'
 curl -sS "http://127.0.0.1:8080/api/traces/$TRACE_ID/label"
 ```
 

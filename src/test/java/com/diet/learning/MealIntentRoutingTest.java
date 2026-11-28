@@ -58,12 +58,18 @@ class MealIntentRoutingTest {
     @Sql(statements = "DELETE FROM meal_item WHERE name IN ('测试清蒸虾', '测试白灼虾', '测试香辣虾')",
             executionPhase = AFTER_TEST_METHOD)
     void mergesOptionalPreferencesAndRanksMealsWhenRecommendingAndChangingBatch() throws Exception {
-        var clarification = recommend(Map.of("message", "晚餐想放松，独食"))
+        recommend(Map.of("message", "晚餐想吃粤菜"))
+                .andExpect(jsonPath("$.result.status").value("RECOMMEND"))
+                .andExpect(jsonPath("$.result.meals[*].name", contains("测试清蒸虾")))
+                .andExpect(jsonPath("$.result.missingSlots").doesNotExist());
+
+        var clarification = recommend(Map.of("message", "想放松，独食"))
                 .andExpect(jsonPath("$.result.status").value("ASK"))
+                .andExpect(jsonPath("$.result.missingSlots", contains("mealTime")))
                 .andReturn().getResponse();
         String session = json.readTree(clarification.getContentAsString()).path("sessionId").asText();
 
-        recommend(Map.of("sessionId", session, "message", "清淡，想吃粤菜，最好快手和控油"))
+        recommend(Map.of("sessionId", session, "message", "晚餐清淡，想吃粤菜，最好快手和控油"))
                 .andExpect(jsonPath("$.result.meals[*].name", contains("测试白灼虾")));
         recommend(Map.of("sessionId", session, "message", "再来一批"))
                 .andExpect(jsonPath("$.result.meals[*].name", contains("测试清蒸虾")));
@@ -72,6 +78,21 @@ class MealIntentRoutingTest {
 
         recommend(Map.of("sessionId", session, "message", "帮我规划三餐"))
                 .andExpect(jsonPath("$.result.meals[?(@.mealTime == '晚餐')].name", contains("测试白灼虾")));
+    }
+
+    @Test
+    void asksForCorePreferencesAndAcceptsAHealthGoalWithoutTaste() throws Exception {
+        var clarification = recommend(Map.of("message", "想放松一下，推荐一点吃的"))
+                .andExpect(jsonPath("$.result.missingSlots", contains("mealTime", "healthGoal")))
+                .andReturn().getResponse();
+        String session = json.readTree(clarification.getContentAsString()).path("sessionId").asText();
+
+        recommend(Map.of("sessionId", session, "message", "午餐"))
+                .andExpect(jsonPath("$.result.status").value("ASK"))
+                .andExpect(jsonPath("$.result.missingSlots", contains("healthGoal")));
+        recommend(Map.of("sessionId", session, "message", "想控油"))
+                .andExpect(jsonPath("$.result.status").value("RECOMMEND"))
+                .andExpect(jsonPath("$.result.meals[*].name", contains("杂粮饭")));
     }
 
     @Test
